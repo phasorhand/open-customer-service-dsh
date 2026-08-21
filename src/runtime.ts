@@ -21,6 +21,11 @@ import type { RiskDecisionEntry } from './harness/plugins/guard-risk.js'
 import { memoryPorts } from './harness/ports-memory.js'
 import type { DeliveryResult, HarnessPorts, OutboundPort } from './harness/ports.js'
 import { KnowledgeIngestor } from './knowledge/ingestor.js'
+import { OutreachComposer } from './nurture/composer.js'
+import { DshComposerLlm, OfflineComposerLlm } from './nurture/dsh-llm.js'
+import { NurtureEngine } from './nurture/engine.js'
+import { NURTURE_MIGRATIONS, CadenceStore } from './nurture/store.js'
+import { OUTREACH_MIGRATIONS, SendOutbox } from './outreach/outbox.js'
 import { KNOWLEDGE_MIGRATIONS, SqliteKnowledgeStore } from './knowledge/store.js'
 
 export interface OpenCsRuntime {
@@ -32,6 +37,9 @@ export interface OpenCsRuntime {
   readonly contacts: ContactService
   readonly contactStore: ContactStore
   readonly importer: ContactImporter
+  readonly cadences: CadenceStore
+  readonly outbox: SendOutbox
+  readonly nurture: NurtureEngine
   /** 最近的风险裁决记录（P7 会换成 audit 表持久化）。 */
   readonly riskDecisions: readonly RiskDecisionEntry[]
   dispose(): Promise<void>
@@ -84,6 +92,13 @@ export interface BuildRuntimeOptions {
    * 测试里默认关闭：watcher 会让 vitest 因为存活的 handle 而无法退出。
    */
   readonly watchKnowledge?: boolean
+  /**
+   * 是否启动节奏引擎的周期性 tick。
+   *
+   * 测试里默认关闭：测试要用 `nurture.tick(now)` 精确控制时间推进，
+   * 后台定时器会让断言变得不确定。
+   */
+  readonly startNurture?: boolean
 }
 
 /**
@@ -116,6 +131,14 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
     outbound: new ChannelOutbound(channels),
   }
 
+  const nurtureDb: Db = openDb(join(config.paths.dataDir, 'nurture.db'), [
+    ...NURTURE_MIGRATIONS,
+    // 发件箱与节奏同库：materialize 与 enqueue 在同一事务里才有意义
+    ...OUTREACH_MIGRATIONS.map((migration) => ({ ...migration, id: migration.id + 100 })),
+  ])
+  const cadences = new CadenceStore(nurtureDb)
+  const outbox = new SendOutbox(nurtureDb)
+
   const riskDecisions: RiskDecisionEntry[] = []
   const harness = await assembleHarness({
     config,
@@ -127,6 +150,25 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
     },
   })
 
+  // 组稿走单轮补全而非 agent loop（见 nurture/dsh-llm.ts 注释）。
+  // 无 API key 时用离线确定性文案，让节奏在 CI 与冒烟里也能跑通。
+  const composerLlm =
+    config.llm.kind === 'mock'
+      ? new OfflineComposerLlm()
+      : new DshComposerLlm({ ctx: harness.ctx, provider: harness.provider, model: harness.model })
+
+  const nurture = new NurtureEngine({
+    cadences,
+    outbox,
+    contacts,
+    composer: new OutreachComposer(composerLlm),
+    outbound: ports.outbound,
+    drainConcurrency: config.nurture.drainConcurrency,
+    leaseSeconds: config.nurture.leaseSeconds,
+    pollIntervalSeconds: config.nurture.pollIntervalSeconds,
+  })
+  if (config.nurture.enabled && options.startNurture === true) nurture.start()
+
   return {
     config,
     channels,
@@ -136,13 +178,18 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
     contacts,
     contactStore,
     importer,
+    cadences,
+    outbox,
+    nurture,
     riskDecisions,
     async dispose(): Promise<void> {
+      await nurture.stop()
       await stopWatching?.()
       await ingestor.stop()
       await harness.dispose()
       knowledgeDb.close()
       crmDb.close()
+      nurtureDb.close()
     },
   }
 }

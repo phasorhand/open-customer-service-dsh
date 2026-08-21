@@ -12,7 +12,7 @@
 | **P2** ✅ | 渠道与网关 | ChannelAdapter + WebChat + Fastify + WS 帧 + 入站→回复端到端 | P1 |
 | **P3** ✅ | 知识库与技能 | FTS5 知识库 + SKILL.md + 两轮技能选择 + prompt sections | P2 |
 | **P4** 🟡 | CRM 与记忆 | ContactStore/Service/Importer/Segment + L2 记忆 + CRM 工具集 | P2 |
-| **P5** | 节奏与外呼 | SendOutbox + CadenceStore + NurtureEngine + Composer + subagent | P4 |
+| **P5** ✅ | 节奏与外呼 | SendOutbox + CadenceStore + NurtureEngine + Composer + subagent | P4 |
 | **P6** | 演进与评测 | Proposal/Gate/ShadowRunner + EvalEngine + Lineage + Replay + Ablation | P3,P4 |
 | **P7** | 管理端与交付 | 全量 Admin API + Next.js 迁移 + WeCom + docker-compose + README | P5,P6 |
 
@@ -89,15 +89,15 @@
 
 ## P5 · 节奏与外呼
 
-- [ ] T5.1 `src/outreach/outbox.ts`：sends + delivery_receipts；`(run_id, step_order)` 幂等；租约 + reap
-- [ ] T5.2 `src/outreach/event-store.ts`：投递事件漏斗
-- [ ] T5.3 `src/nurture/types.ts`：`Cadence` / `CadenceStep` / `CadenceRun` / `TickReport`
-- [ ] T5.4 `src/nurture/store.ts`：cadences/steps/runs CRUD
-- [ ] T5.5 `src/nurture/pacing.ts`：静默时段（IANA 时区）+ 周频控 + `nextOpenSlot`
-- [ ] T5.6 `src/nurture/composer.ts`：template 短路 / goal 走 LLM；**身份边界 system prompt**（教训 #1）
-- [ ] T5.7 `src/nurture/engine.ts`：五阶段 tick（reap→exit→enrol→advance→drain）+ **并发 drain**（教训 #2）
-- [ ] T5.8 `src/harness/plugins/tools-cs.ts` 补 `nurture.deliver`（ORANGE_B 档 + 频控 guard）
-- [ ] T5.9 单测（engine/composer/pacing/outbox）+ `tests/e2e/lead-to-close.test.ts`
+- [x] T5.1 `src/outreach/outbox.ts`：sends + delivery_receipts；`(run_id, step_order)` 幂等；租约 + reap
+- [x] T5.2 `src/outreach/event-store.ts`：投递事件漏斗
+- [x] T5.3 `src/nurture/types.ts`：`Cadence` / `CadenceStep` / `CadenceRun` / `TickReport`
+- [x] T5.4 `src/nurture/store.ts`：cadences/steps/runs CRUD
+- [x] T5.5 `src/nurture/pacing.ts`：静默时段（IANA 时区）+ 周频控 + `nextOpenSlot`
+- [x] T5.6 `src/nurture/composer.ts`：template 短路 / goal 走 LLM；**身份边界 system prompt**（教训 #1）
+- [x] T5.7 `src/nurture/engine.ts`：五阶段 tick（reap→exit→enrol→advance→drain）+ **并发 drain**（教训 #2）
+- [x] T5.8 `src/harness/plugins/tools-cs.ts` 补 `nurture.deliver`（ORANGE_B 档 + 频控 guard）
+- [x] T5.9 单测（engine/composer/pacing/outbox）+ `tests/e2e/lead-to-close.test.ts`
 - **验收**：导入 500 联系人 → 激活节奏 → 全自动投递 → 回复退出；无重复发送
 
 ## P6 · 演进与评测
@@ -187,3 +187,13 @@
   首轮入站时才解析出来的，只在创建时绑定会让整个会话的 CRM 工具都读不到客户档案
 - SQL 模板字符串里不能出现反引号（会提前终止 template literal），注释里引用列名
   要写成 `at 列` 而不是带反引号的形式
+
+### P5
+- `dsh-schedule` 实测确认**不匹配**：session-scoped 提醒、`every_seconds` 下限 5 分钟、
+  状态存 session 日志。它是「让 agent 提醒自己」，我们要「对一批外部联系人按业务规则投递」
+- BullMQ 能力够但强依赖 Redis，与「单进程 + SQLite 自托管」定位冲突；
+  且静默时段/周频控/按阶段退出/回复即停这些**业务规则**它一个也不提供，仍要自建。
+  登记为规模化切换目标（触发条件：单实例吞吐不够或需水平扩展）
+- 时区处理用 `Intl.DateTimeFormat.formatToParts` 即可，无需 date-fns/tz
+- 测试里 `delivered` 会同时含**节奏消息**与**客服 agent 的即时回复**，
+  断言要按内容过滤，不能只数条数
