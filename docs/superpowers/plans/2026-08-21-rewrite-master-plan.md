@@ -15,6 +15,7 @@
 | **P5** ✅ | 节奏与外呼 | SendOutbox + CadenceStore + NurtureEngine + Composer + subagent | P4 |
 | **P6** 🟡 | 演进与评测 | Proposal/Gate/ShadowRunner + EvalEngine + Lineage + Replay + Ablation | P3,P4 |
 | **P7** 🟡 | 管理端与交付 | 全量 Admin API + Next.js 迁移 + WeCom + docker-compose + README | P5,P6 |
+| **P8** ✅ | 产品化（2B 可售） | 鉴权 + HITL 审批闭环 + 持久化审计 + 企微客服 + 控制台 + 网关 + 频控 | P7a |
 
 ---
 
@@ -121,7 +122,7 @@
 - [x] T7.3 `routes-cadences.ts`（CRUD / activate / pause / enroll / stats）
 - [ ] T7.4 `routes-knowledge.ts` `routes-skills.ts` `routes-lineage.ts` `routes-eval.ts` `routes-replay.ts` `routes-ablation.ts` `routes-campaigns.ts`
 - [x] T7.5 `GET /admin/sessions/:id/events`（dsh 原生回放查询，新增能力）
-- [ ] T7.6 `src/channel/wecom.ts`：企微客服 adapter（`@wecom/crypto` 加解密）+ `POST /channels/wecom/callback`
+- [x] T7.6 `src/channel/wecom.ts`：企微客服 adapter（加解密自建于 wecom-crypto.ts）+ `POST /channels/wecom/callback`（P8 完成）
 - [ ] T7.7 `apps/admin-web/`：从 Python 版 `web-ui/` 迁移，仅改 API base
 - [x] T7.8 `Dockerfile` + `docker-compose.yml` + `.env.example`
 - [x] T7.9 `README.md`（产品说明 + dsh 依赖说明 + 环境变量表 + 快速开始）
