@@ -11,7 +11,8 @@ import { buildRuntime } from './runtime.js'
 
 async function main(): Promise<void> {
   const config = loadConfig()
-  const runtime = await buildRuntime({ config })
+  // 生产进程开启知识库热重载：改一个 .md 文件后新答案立即生效，无需重启
+  const runtime = await buildRuntime({ config, watchKnowledge: true })
   const app = await createApp(runtime)
 
   let shuttingDown = false

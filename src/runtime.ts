@@ -5,21 +5,27 @@
  * 便于测试替换与后续分层演进。
  */
 
+import { join } from 'node:path'
+
 import { ChannelRegistry } from './channel/adapter.js'
 import type { OutboundAction } from './channel/types.js'
 import { textContent } from './channel/types.js'
 import { WebChatAdapter, WEBCHAT_CHANNEL_ID } from './channel/webchat.js'
 import type { RuntimeConfig } from './config.js'
+import { openDb, type Db } from './db/sqlite.js'
 import { assembleHarness, type Harness } from './harness/assemble.js'
 import type { RiskDecisionEntry } from './harness/plugins/guard-risk.js'
 import { memoryPorts } from './harness/ports-memory.js'
 import type { DeliveryResult, HarnessPorts, OutboundPort } from './harness/ports.js'
+import { KnowledgeIngestor } from './knowledge/ingestor.js'
+import { KNOWLEDGE_MIGRATIONS, SqliteKnowledgeStore } from './knowledge/store.js'
 
 export interface OpenCsRuntime {
   readonly config: RuntimeConfig
   readonly channels: ChannelRegistry
   readonly webchat: WebChatAdapter
   readonly harness: Harness
+  readonly knowledge: SqliteKnowledgeStore
   /** 最近的风险裁决记录（P7 会换成 audit 表持久化）。 */
   readonly riskDecisions: readonly RiskDecisionEntry[]
   dispose(): Promise<void>
@@ -62,10 +68,16 @@ class ChannelOutbound implements OutboundPort {
 export interface BuildRuntimeOptions {
   readonly config: RuntimeConfig
   /**
-   * 覆盖业务端口。省略时 knowledge/orders 用内存实现（P3/P4 会换成真实 store），
-   * outbound 始终由渠道注册表提供。
+   * 覆盖业务端口。省略时 orders 用内存实现（P4 换成真实 CRM），
+   * knowledge 用 FTS5 store，outbound 始终由渠道注册表提供。
    */
   readonly ports?: Partial<Omit<HarnessPorts, 'outbound'>>
+  /**
+   * 是否监听知识库目录变更并热重载。
+   *
+   * 测试里默认关闭：watcher 会让 vitest 因为存活的 handle 而无法退出。
+   */
+  readonly watchKnowledge?: boolean
 }
 
 /**
@@ -80,9 +92,15 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
   const webchat = new WebChatAdapter(config.tenantId)
   channels.register(webchat)
 
+  const knowledgeDb: Db = openDb(join(config.paths.dataDir, 'knowledge.db'), KNOWLEDGE_MIGRATIONS)
+  const knowledge = new SqliteKnowledgeStore(knowledgeDb)
+  const ingestor = new KnowledgeIngestor({ root: config.paths.knowledgeDir, tenantId: config.tenantId, store: knowledge })
+  await ingestor.ingestAll()
+  const stopWatching = options.watchKnowledge === true ? await ingestor.watch() : undefined
+
   const defaults = memoryPorts()
   const ports: HarnessPorts = {
-    knowledge: options.ports?.knowledge ?? defaults.knowledge,
+    knowledge: options.ports?.knowledge ?? knowledge,
     orders: options.ports?.orders ?? defaults.orders,
     outbound: new ChannelOutbound(channels),
   }
@@ -102,9 +120,13 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
     channels,
     webchat,
     harness,
+    knowledge,
     riskDecisions,
     async dispose(): Promise<void> {
+      await stopWatching?.()
+      await ingestor.stop()
       await harness.dispose()
+      knowledgeDb.close()
     },
   }
 }
