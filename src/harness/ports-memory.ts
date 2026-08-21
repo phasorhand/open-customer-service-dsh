@@ -5,7 +5,15 @@
  * 接口变更会同时打断两边的类型检查，不会出现 mock 悄悄漂移。
  */
 
-import type { HarnessPorts, KnowledgeHit, KnowledgePort, OrderInfo, OrderPort } from './ports.js'
+import type {
+  DeliveryResult,
+  HarnessPorts,
+  KnowledgeHit,
+  KnowledgePort,
+  OrderInfo,
+  OrderPort,
+  OutboundPort,
+} from './ports.js'
 
 /** 内存知识库：朴素子串匹配，够 P1 冒烟用；P3 换 FTS5 store。 */
 export class InMemoryKnowledge implements KnowledgePort {
@@ -92,10 +100,34 @@ export const SAMPLE_ORDERS: readonly (OrderInfo & { readonly tenantId: string })
   },
 ]
 
+/**
+ * 内存出站端口：把投递记录在数组里，供测试断言「发了什么」。
+ *
+ * 与真实渠道共用 `OutboundPort` 接口，因此接口变更会同时打断两边（教训 #5）。
+ */
+export class RecordingOutbound implements OutboundPort {
+  readonly delivered: { readonly channelId: string; readonly conversationId: string; readonly customerId: string; readonly text: string }[] = []
+
+  /**
+   * @param failWith - 设置后所有投递都失败，用于测试失败分支。
+   */
+  constructor(private readonly failWith?: string) {}
+
+  async deliver(
+    target: { readonly channelId: string; readonly conversationId: string; readonly customerId: string },
+    text: string,
+  ): Promise<DeliveryResult> {
+    if (this.failWith !== undefined) return { ok: false, error: this.failWith, retryable: false }
+    this.delivered.push({ ...target, text })
+    return { ok: true, externalMessageId: `mem-${this.delivered.length}` }
+  }
+}
+
 /** 构造一套内存端口。 */
 export function memoryPorts(
   knowledge: readonly (KnowledgeHit & { readonly tenantId: string })[] = SAMPLE_KNOWLEDGE,
   orders: readonly (OrderInfo & { readonly tenantId: string })[] = SAMPLE_ORDERS,
+  outbound: OutboundPort = new RecordingOutbound(),
 ): HarnessPorts {
-  return { knowledge: new InMemoryKnowledge(knowledge), orders: new InMemoryOrders(orders) }
+  return { knowledge: new InMemoryKnowledge(knowledge), orders: new InMemoryOrders(orders), outbound }
 }

@@ -49,8 +49,31 @@ export interface OrderPort {
   getOrder(tenantId: string, orderId: string): Promise<OrderInfo | undefined>
 }
 
+/** 出站投递结果。与 `channel/types.ts` 的 `SendResult` 同构，此处复述以免插件层依赖渠道模块。 */
+export type DeliveryResult =
+  | { readonly ok: true; readonly externalMessageId?: string }
+  | { readonly ok: false; readonly error: string; readonly retryable: boolean }
+
+/** 出站投递端口。P2 由 `ChannelRegistry` 实现。 */
+export interface OutboundPort {
+  /**
+   * 向客户投递一条文本消息。
+   *
+   * 调用点已在 guard 之后——这里**不做**风险判断，只做投递。
+   *
+   * @param target - 收件目标。
+   * @param text - 消息正文。
+   * @returns 投递结果；失败以返回值表达，便于模型据此改口。
+   */
+  deliver(
+    target: { readonly channelId: string; readonly conversationId: string; readonly customerId: string },
+    text: string,
+  ): Promise<DeliveryResult>
+}
+
 /** 插件层依赖的全部端口。 */
 export interface HarnessPorts {
   readonly knowledge: KnowledgePort
   readonly orders: OrderPort
+  readonly outbound: OutboundPort
 }

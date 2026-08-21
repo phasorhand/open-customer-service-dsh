@@ -24,6 +24,8 @@ const SEARCH_LIMIT = 5
 const RENDER_EXCERPT = 200
 
 export function apply(ctx: Context, ports: HarnessPorts): void {
+  registerReply(ctx, ports)
+
   ctx.tools.register(
     defineTool({
       name: 'knowledge.search',
@@ -158,6 +160,63 @@ export function apply(ctx: Context, ports: HarnessPorts): void {
           currency: order.currency,
           placedAt: order.placedAt,
         }
+      },
+    }),
+  )
+}
+
+/**
+ * 面向客户的自由文本回复。
+ *
+ * 风险档 ORANGE_C（默认走人工确认）——这是「LLM 永不直接执行不可逆动作」原则的
+ * 主要落点：把话说出去是不可撤回的。放开自动回复靠调 `OPENCS_AUTO_APPROVE_TIERS`，
+ * 是一个**显式的运营决策**，不是代码默认值。
+ */
+function registerReply(ctx: Context, ports: HarnessPorts): void {
+  ctx.tools.register(
+    defineTool({
+      name: 'channel.reply',
+      description:
+        '把最终答复发送给客户。只有在已经查证过必要信息（知识库、订单）之后才调用；一次回复一条，不要拆成多条。',
+      parameters: {
+        text: { type: 'string', required: true, description: '发送给客户的完整回复正文' },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            delivered: { type: 'boolean', required: true },
+            text: { type: 'string', required: true },
+            error: { type: 'string', required: true },
+          },
+        },
+        render: (_args, value) =>
+          value.delivered
+            ? [{ type: 'text', text: '回复已送达客户。' }]
+            : [{ type: 'text', text: `回复未能送达：${value.error}。不要重复发送，请说明情况或转人工。` }],
+        presentationMeta: (_args, value) =>
+          cardToJson(
+            makeCard({
+              type: 'cs_reply',
+              title: value.delivered ? '已回复客户' : '回复投递失败',
+              summary: value.text,
+              items: [{ id: 'body', title: '回复正文', evidence: value.text }],
+              ...(value.delivered
+                ? {}
+                : { items: [{ id: 'error', title: '失败原因', evidence: value.error }] }),
+            }),
+          ),
+      },
+      async execute(args, exec) {
+        const scope = requireScope(sessionIdOf(exec))
+        const result = await ports.outbound.deliver(
+          { channelId: scope.channelId, conversationId: scope.conversationId, customerId: scope.customerId },
+          args.text,
+        )
+        return result.ok
+          ? { delivered: true, text: args.text, error: '' }
+          : { delivered: false, text: args.text, error: result.error }
       },
     }),
   )

@@ -7,9 +7,9 @@
 
 | Phase | 名称 | 交付 | 依赖 |
 |---|---|---|---|
-| **P0** | 骨架与契约 | pnpm 工程 + dsh link + 契约测试 + config + db migration runner | — |
-| **P1** | dsh 内嵌最小闭环 | assembleHarness + 1 工具 + guard + mock LLM + smoke | P0 |
-| **P2** | 渠道与网关 | ChannelAdapter + WebChat + Fastify + WS 帧 + 入站→回复端到端 | P1 |
+| **P0** ✅ | 骨架与契约 | pnpm 工程 + dsh link + 契约测试 + config + db migration runner | — |
+| **P1** ✅ | dsh 内嵌最小闭环 | assembleHarness + 1 工具 + guard + mock LLM + smoke | P0 |
+| **P2** ✅ | 渠道与网关 | ChannelAdapter + WebChat + Fastify + WS 帧 + 入站→回复端到端 | P1 |
 | **P3** | 知识库与技能 | FTS5 知识库 + SKILL.md + 两轮技能选择 + prompt sections | P2 |
 | **P4** | CRM 与记忆 | ContactStore/Service/Importer/Segment + L2 记忆 + CRM 工具集 | P2 |
 | **P5** | 节奏与外呼 | SendOutbox + CadenceStore + NurtureEngine + Composer + subagent | P4 |
@@ -22,42 +22,42 @@
 
 **目标**：一个能 `pnpm test` 的空工程，且 dsh 依赖面被契约测试锁死。
 
-- [ ] T0.1 `package.json`：pnpm、`type: module`、Node ≥22；scripts = dev/build/typecheck/lint/test/smoke
-- [ ] T0.2 dsh 依赖以 `link:../deepseek-harness/...` 写入；README 记录 SHA `47f943859b` @ rc.5
-- [ ] T0.3 `tsconfig.json`（strict, NodeNext, noEmit）、`vitest.config.ts`、`.oxlintrc.json`、`.gitignore`
-- [ ] T0.4 `src/config.ts`：zod schema → `RuntimeConfig`；生产缺失必填项 fail loud
-- [ ] T0.5 `src/db/`：SQLite 连接工厂（WAL）+ 编号 migration runner + `openDb(name)` API
-- [ ] T0.6 `tests/contract/dsh-api.test.ts`：断言 `Context/AgentRegistry/AgentLoop/LlmRuntime/SessionStore/SystemPrompt/ToolRuntime/defineTool/createUserMessage/SessionId/LlmAdapter/SqliteSessionPersistence` 全部可导入且类型形状正确
-- [ ] T0.7 `tests/unit/config.test.ts`、`tests/unit/db.test.ts`
+- [x] T0.1 `package.json`：pnpm、`type: module`、Node ≥22；scripts = dev/build/typecheck/lint/test/smoke
+- [x] T0.2 dsh 依赖以 `link:../deepseek-harness/...` 写入；README 记录 SHA `47f943859b` @ rc.5
+- [x] T0.3 `tsconfig.json`（strict, NodeNext, noEmit）、`vitest.config.ts`、`.oxlintrc.json`、`.gitignore`
+- [x] T0.4 `src/config.ts`：zod schema → `RuntimeConfig`；生产缺失必填项 fail loud
+- [x] T0.5 `src/db/`：SQLite 连接工厂（WAL）+ 编号 migration runner + `openDb(name)` API
+- [x] T0.6 `tests/contract/dsh-api.test.ts`：断言 `Context/AgentRegistry/AgentLoop/LlmRuntime/SessionStore/SystemPrompt/ToolRuntime/defineTool/createUserMessage/SessionId/LlmAdapter/SqliteSessionPersistence` 全部可导入且类型形状正确
+- [x] T0.7 `tests/unit/config.test.ts`、`tests/unit/db.test.ts`
 - **验收**：`pnpm install && pnpm typecheck && pnpm test` 全绿
 
 ## P1 · dsh 内嵌最小闭环
 
 **目标**：一条 `用户消息 → 模型 → 工具 → 卡片 → 回放` 的链路在离线 mock 下跑通。
 
-- [ ] T1.1 `src/harness/session-scope.ts`：`TenantScope` + bind/lookup 注册表
-- [ ] T1.2 `src/harness/mock-llm.ts`：`LlmAdapter` 子类，确定性意图路由（无 key 时兜底）
-- [ ] T1.3 `src/harness/cards.ts`：卡片协议类型 + `protocolVersion` + 软降级
-- [ ] T1.4 `src/harness/plugins/tools-cs.ts`：首个工具 `knowledge.search`（P3 前先用内存桩）
-- [ ] T1.5 `src/harness/plugins/guard-scope.ts`：租户越权 deny
-- [ ] T1.6 `src/harness/plugins/guard-risk.ts`：六档 `RiskTier` 表 + allow/ask/deny 裁决
-- [ ] T1.7 `src/harness/assemble.ts`：Context 组装 + `agentFor()` + `runTurn()`
-- [ ] T1.8 `scripts/smoke.ts`：离线冒烟（意图→工具→卡片→越权拒绝→回放幂等）
-- [ ] T1.9 `tests/integration/harness.test.ts`：真实 `assembleHarness()`（不 mock Context）
+- [x] T1.1 `src/harness/session-scope.ts`：`TenantScope` + bind/lookup 注册表
+- [x] T1.2 `src/harness/mock-llm.ts`：`LlmAdapter` 子类，确定性意图路由（无 key 时兜底）
+- [x] T1.3 `src/harness/cards.ts`：卡片协议类型 + `protocolVersion` + 软降级
+- [x] T1.4 `src/harness/plugins/tools-cs.ts`：首个工具 `knowledge.search`（P3 前先用内存桩）
+- [x] T1.5 `src/harness/plugins/guard-scope.ts`：租户越权 deny
+- [x] T1.6 `src/harness/plugins/guard-risk.ts`：六档 `RiskTier` 表 + allow/ask/deny 裁决
+- [x] T1.7 `src/harness/assemble.ts`：Context 组装 + `agentFor()` + `runTurn()`
+- [x] T1.8 `scripts/smoke.ts`：离线冒烟（意图→工具→卡片→越权拒绝→回放幂等）
+- [x] T1.9 `tests/integration/harness.test.ts`：真实 `assembleHarness()`（不 mock Context）
 - **验收**：`pnpm smoke` 全绿；越权被拒且无业务卡片；回放帧数与实时一致
 
 ## P2 · 渠道与网关
 
-- [ ] T2.1 `src/channel/types.ts`：`ContentPart` / `InboundMessage` / `OutboundAction` / `ChannelCapabilities`
-- [ ] T2.2 `src/channel/adapter.ts`：`ChannelAdapter` 接口 + `ChannelRegistry`
-- [ ] T2.3 `src/channel/webchat.ts`：WebChat adapter（`canSendProactive: true`）
-- [ ] T2.4 `src/harness/plugins/tools-cs.ts` 补 `channel.reply`（ORANGE_C 档）
-- [ ] T2.5 `src/gateway/app.ts`：Fastify 工厂 + `/health/live` `/health/ready`
-- [ ] T2.6 `src/gateway/routes-channels.ts`：`POST /channels/webchat`（+ 旧路径 `/chat/message` 别名）
-- [ ] T2.7 `src/gateway/frames.ts`：SessionEvent → 帧（`text/delta` `tool/status` `card/*`）
-- [ ] T2.8 `src/gateway/ws.ts`：`WS /ws/conversations/:id` 实时 + 历史重放
-- [ ] T2.9 `src/runtime.ts` + `src/main.ts`：组合根 + 生命周期（启动/优雅关停）
-- [ ] T2.10 单测（frames/adapter/registry）+ `tests/e2e/inbound-reply.test.ts`
+- [x] T2.1 `src/channel/types.ts`：`ContentPart` / `InboundMessage` / `OutboundAction` / `ChannelCapabilities`
+- [x] T2.2 `src/channel/adapter.ts`：`ChannelAdapter` 接口 + `ChannelRegistry`
+- [x] T2.3 `src/channel/webchat.ts`：WebChat adapter（`canSendProactive: true`）
+- [x] T2.4 `src/harness/plugins/tools-cs.ts` 补 `channel.reply`（ORANGE_C 档）
+- [x] T2.5 `src/gateway/app.ts`：Fastify 工厂 + `/health/live` `/health/ready`
+- [x] T2.6 `src/gateway/routes-channels.ts`：`POST /channels/webchat`（+ 旧路径 `/chat/message` 别名）
+- [x] T2.7 `src/gateway/frames.ts`：SessionEvent → 帧（`text/delta` `tool/status` `card/*`）
+- [x] T2.8 `src/gateway/ws.ts`：`WS /ws/conversations/:id` 实时 + 历史重放
+- [x] T2.9 `src/runtime.ts` + `src/main.ts`：组合根 + 生命周期（启动/优雅关停）
+- [x] T2.10 单测（frames/adapter/registry）+ `tests/e2e/inbound-reply.test.ts`
 - **验收**：`pnpm dev` 起服务，POST 一条消息拿到回复；WS 收到分片帧；重连历史一致
 
 ## P3 · 知识库与技能
@@ -136,3 +136,31 @@
 - 每个 task 完成后跑 `pnpm typecheck && pnpm test`
 - mock 与真实实现共用同一 TS interface（教训 #5）
 - 提交信息写明「复用：<库> @ <版本> — <理由>」或「自建：<理由 + 排除候选>」
+
+
+---
+
+## 已完成阶段的实测结论（写回计划，供后续阶段参考）
+
+### P0
+- `oxlint` 因网络问题暂未接入，`pnpm lint` 先指向 `tsc --noEmit`；恢复网络后补回
+- 契约测试立刻锁到两条 dsh API 约束：
+  1. object value schema 必须显式 `additionalProperties`
+  2. 输出属性未标 `required: true` 会被推成可选，`presentationMeta` 因此过不了 `JsonValue`
+- `node:sqlite` 必须用 `createRequire` 动态加载：Vite 剥掉 `node:` 前缀后查不到内置模块
+
+### P1
+- cordis 没有 `ctx.stop()`：整棵树关停靠逆序 dispose 每个 `ctx.plugin()` 返回的 fiber
+- `Fiber.dispose()` 是异步的，必须 await
+
+### P2
+- **fastify 默认 `removeAdditional: true` 会静默剥掉未知字段**——对 webhook 是隐患
+  （接入方字段拼错到线上才发现）。已改为显式拒绝 + 400
+- **`tool/result` 事件不带工具名**，只有 `message.source.callId`。要给前端
+  「xx 已完成」提示必须维护 callId → 工具名映射，因此帧投影从纯函数改为
+  一次性 `FrameProjector`；WS 侧的 projector 必须**长期存活**，否则映射跨回调丢失
+- **WebChat 有两种消费形态**（WS 长连接 / HTTP 请求-响应）。最初只支持前者，
+  导致纯 HTTP 接入方每次都收到「投递失败」，模型据此向用户道歉。已改为
+  「先入 per-conversation 待取队列，再推在线订阅者」，两种形态都成立
+- HTTP 响应区分 `reply`（对客户说的话，来自 `channel.reply`）与
+  `agent_narration`（模型内部叙述）——两者混为一谈会让接入方把内部推理发给客户

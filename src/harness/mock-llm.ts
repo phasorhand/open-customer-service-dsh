@@ -112,33 +112,48 @@ class OpenCsMockAdapter extends LlmAdapter {
     const last = options.messages.at(-1)
     const toolResult = last?.content.find((block) => block.type === 'tool-result')
 
-    // 第二步：拿到工具结果后收尾
     if (toolResult !== undefined) {
-      yield* streamText(summarize(toolResult))
-      yield { type: 'usage', usage: { inputTokens: 64, outputTokens: 32 } }
-      yield { type: 'finish', reason: { kind: 'stop' } }
+      const text = textOfResult(toolResult)
+
+      // 已经发过 channel.reply（不论成败）→ 本轮结束，只补一段收尾文本。
+      // 判据用工具结果内容而非调用历史：mock 不持有跨轮状态。
+      const outcome = replyOutcomeOf(text)
+      if (outcome !== undefined) {
+        yield* streamText(outcome)
+        yield { type: 'usage', usage: { inputTokens: 64, outputTokens: 24 } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+        return
+      }
+
+      // 查到信息 → 走 channel.reply 把答复发出去（真实模型的行为，也让出站链路被测到）
+      yield* yieldToolCall('channel.reply', { text: summarize(text) })
       return
     }
 
     const routed = route(lastUserText(options))
     if (routed === undefined) {
-      yield* streamText(GREETING)
-      yield { type: 'usage', usage: { inputTokens: 32, outputTokens: 48 } }
-      yield { type: 'finish', reason: { kind: 'stop' } }
+      // 无法识别意图：直接把问候作为答复发出去
+      yield* yieldToolCall('channel.reply', { text: GREETING })
       return
     }
 
-    // 第一步：简短前言 + 工具调用
+    // 第一步：简短前言 + 查证工具
     yield* streamText(routed.preamble)
-    const callId = CallId(`mock-${counter()}`)
-    const args = JSON.stringify(routed.args)
-    yield { type: 'block-start', index: 1, blockType: 'tool-call' }
-    yield { type: 'tool-call-delta', index: 1, id: callId, name: routed.tool, argumentsDelta: args }
-    yield { type: 'block-end', index: 1, block: { type: 'tool-call', id: callId, name: routed.tool, arguments: args } }
-    yield { type: 'usage', usage: { inputTokens: 48, outputTokens: 24 } }
-    yield { type: 'finish', reason: { kind: 'tool-calls' } }
+    yield* yieldToolCall(routed.tool, routed.args)
   }
 }
+
+/** 产出一次工具调用的完整 chunk 序列。 */
+function* yieldToolCall(tool: string, args: Record<string, unknown>): Generator<StreamChunk> {
+  const callId = CallId(`mock-${counter()}`)
+  const encoded = JSON.stringify(args)
+  yield { type: 'block-start', index: 1, blockType: 'tool-call' }
+  yield { type: 'tool-call-delta', index: 1, id: callId, name: tool, argumentsDelta: encoded }
+  yield { type: 'block-end', index: 1, block: { type: 'tool-call', id: callId, name: tool, arguments: encoded } }
+  yield { type: 'usage', usage: { inputTokens: 48, outputTokens: 24 } }
+  yield { type: 'finish', reason: { kind: 'tool-calls' } }
+}
+
 
 /** 单调计数器：mock 的 callId 需要唯一但**必须确定性**，不能用时间戳（否则回放不可比对）。 */
 let seq = 0
@@ -152,12 +167,28 @@ export function resetMockCallIds(): void {
   seq = 0
 }
 
-function summarize(toolResult: { readonly content: readonly { readonly type: string }[] }): string {
-  const text = toolResult.content
+function textOfResult(toolResult: { readonly content: readonly { readonly type: string }[] }): string {
+  return toolResult.content
     .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
     .map((block) => block.text)
     .join('\n')
+}
 
+/**
+ * 识别 `channel.reply` 的执行结果并给出对应的收尾文本。
+ *
+ * 返回 `undefined` 表示这不是一次回复的结果（而是查证工具的结果），调用方应继续发回复。
+ */
+function replyOutcomeOf(text: string): string | undefined {
+  if (/回复已送达/.test(text)) return '好的，已经答复客户了。'
+  if (/需人工确认/.test(text)) return '答复草稿已生成，按当前策略需要人工确认后才能发送给客户。'
+  if (/回复未能送达/.test(text)) return '答复没能送达客户，我不重复发送，请人工跟进。'
+  if (/未经服务端注入|作用域|越权/.test(text)) return '抱歉，当前会话缺少必要的权限上下文，我无法处理这个请求。'
+  if (/频控/.test(text)) return '触达频率已达上限，本次不再发送，稍后再试。'
+  return undefined
+}
+
+function summarize(text: string): string {
   if (/拒绝|deny|作用域|越权|频控/.test(text)) {
     const firstLine = text.split('\n')[0] ?? ''
     return `抱歉，这个操作超出了当前会话的权限范围：${firstLine}。我已记录，请联系管理员处理。`
