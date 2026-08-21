@@ -5,10 +5,13 @@
 这是 [`open-customer-service`](../open-customer-service)（Python / FastAPI）的完全重写版：
 Agent 运行时不再自建，转由 dsh 承担；OpenCS 只保留 dsh 不提供的 CS/CRM 业务语义。
 
-> ⚠️ 开发中。**P0 骨架 / P1 dsh 内嵌闭环 / P2 渠道网关 / P3 知识库与技能 /
-> P4 CRM / P5 节奏引擎 / P7a 管理 API 与 Docker** 已完成（380 tests）。
-> 待办：P6 演进与评测、P7b 企微适配器与 Next.js 管理端。
-> 进度见 `docs/superpowers/plans/2026-08-21-rewrite-master-plan.md`。
+> **状态**：核心链路已全部打通并端到端验证（**424 tests**）。
+>
+> | 已完成 | 待办 |
+> |---|---|
+> | dsh 内嵌 agent 内核 · 渠道网关 · HTTP/WS 帧协议 · FTS5 知识库与热重载 · 技能库与两轮选择 · CRM 漏斗与分群 · 节奏引擎与全自动成单 · CS 评测 · 演进门禁 · 管理 API · Docker | 企微渠道适配器 · Next.js 管理端迁移 · 技能自策展 / 消融实验 / 回放差分器 |
+>
+> 进度与实测结论见 `docs/superpowers/plans/2026-08-21-rewrite-master-plan.md`。
 
 ---
 
@@ -151,7 +154,7 @@ docker compose -f open-customer-service-dsh/docker-compose.yml up --build
 ## 架构
 
 ```
-apps/admin-web (Next.js，P7)
+apps/admin-web (Next.js，待迁移)
         │ HTTP / WS
 ┌───────▼─────────────────────────────────────────┐
 │ src/gateway   Fastify 5                          │
@@ -162,12 +165,27 @@ apps/admin-web (Next.js，P7)
 ┌───────▼──────────────┐   ┌────────────────────────┐
 │ dsh Context（内嵌）    │   │ 自研业务层               │
 │  agents / agentLoop   │◄──┤  channel/  渠道网关      │
-│  tools（defineTool）  │   │  crm/      联系人（P4）  │
-│  llm / sessions       │   │  nurture/  节奏（P5）    │
-│  systemPrompt         │   │  knowledge/ 知识库（P3） │
-│  subagents / jobs     │   │  evolution/ 演进（P6）   │
+│  tools（defineTool）  │   │  crm/      联系人 · 漏斗  │
+│  llm / sessions       │   │  nurture/  节奏引擎      │
+│  systemPrompt         │   │  knowledge/ FTS5 知识库  │
+│  subagents / jobs     │   │  evolution/ 演进门禁     │
+│  skills（SKILL.md）   │   │  evaluation/ CS 评测     │
 └──────────────────────┘   └────────────────────────┘
 ```
+
+### 闭环学习
+
+```
+每轮回复 → 确定性评测（越权承诺/语气/推进度，零成本、不调模型）
+         → 低分会话沉淀为证据
+         → agent 调 evolution.propose 提改进
+         → 门禁判定（改行为准则的一律 needs_human）
+         → 人工审批 → 生效
+```
+
+**改变 agent 行为准则的提案永远需要人工确认。** `skill` / `cadence` 维度与任何
+`deprecate` 动作强制走人工；自动放行默认关闭。让模型自主改写自己的准则，
+等于把「不做超范围承诺」这条红线交给它自己决定要不要遵守。
 
 ### 三条核心纪律
 
@@ -208,7 +226,7 @@ apps/admin-web (Next.js，P7)
 | `OPENCS_TENANT_ID` | `default` | 默认租户 |
 | `OPENCS_HOST` / `OPENCS_PORT` | `0.0.0.0` / `8080` | 监听地址 |
 | `DEEPSEEK_API_KEY` | — | 配置后走 dsh-llm-deepseek |
-| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — | OpenAI 兼容网关（P2 后续接入） |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — | OpenAI 兼容网关（provider 待接入） |
 | `OPENCS_MODEL` | `deepseek-chat` | 模型 id |
 | `OPENCS_ACTION_TOKEN_SECRET` | — | **生产必填**，≥32 字节 |
 | `OPENCS_AUTO_APPROVE_TIERS` | `0,1,2,3` | 自动放行的风险档 |
@@ -216,7 +234,7 @@ apps/admin-web (Next.js，P7)
 | `OPENCS_NURTURE_POLL_INTERVAL` | `60` | tick 间隔（秒） |
 | `OPENCS_NURTURE_DRAIN_CONCURRENCY` | `8` | 并发投递数 |
 | `OPENCS_NURTURE_LEASE_SECONDS` | `300` | 发件租约时长 |
-| `WECOM_*` | — | 企微三件套，必须同时配置（P7） |
+| `WECOM_*` | — | 企微三件套，必须同时配置（适配器待实现） |
 | `LANGFUSE_*` | — | 可选观测 |
 
 生产环境缺少必填项或降级为 mock 模型会**直接启动失败**，不静默降级。
@@ -233,7 +251,7 @@ apps/admin-web (Next.js，P7)
 | 端到端 | `tests/e2e/` | 真实 Fastify + 真实 runtime 对象图 |
 
 ```bash
-pnpm test        # 380 tests
+pnpm test        # 424 tests
 pnpm smoke       # 离线全链路冒烟
 ```
 
