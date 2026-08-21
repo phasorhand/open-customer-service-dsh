@@ -13,7 +13,7 @@
 | **P3** ✅ | 知识库与技能 | FTS5 知识库 + SKILL.md + 两轮技能选择 + prompt sections | P2 |
 | **P4** 🟡 | CRM 与记忆 | ContactStore/Service/Importer/Segment + L2 记忆 + CRM 工具集 | P2 |
 | **P5** ✅ | 节奏与外呼 | SendOutbox + CadenceStore + NurtureEngine + Composer + subagent | P4 |
-| **P6** | 演进与评测 | Proposal/Gate/ShadowRunner + EvalEngine + Lineage + Replay + Ablation | P3,P4 |
+| **P6** 🟡 | 演进与评测 | Proposal/Gate/ShadowRunner + EvalEngine + Lineage + Replay + Ablation | P3,P4 |
 | **P7** 🟡 | 管理端与交付 | 全量 Admin API + Next.js 迁移 + WeCom + docker-compose + README | P5,P6 |
 
 ---
@@ -102,16 +102,16 @@
 
 ## P6 · 演进与评测
 
-- [ ] T6.1 `src/evolution/types.ts` + `proposal-store.ts`（5 维度 / 3 动作 / 6 状态）
+- [x] T6.1 `src/evolution/types.ts` + `proposal-store.ts`（5 维度 / 3 动作 / 6 状态）
 - [ ] T6.2 `src/evolution/handlers/*`：skill/memory/crm_tool/knowledge/outreach 五处理器
-- [ ] T6.3 `src/evaluation/`：`cs-metrics.ts`（policy/tone/resolution）+ `engine.ts`（realtime/gate/batch）+ `store.ts`
+- [x] T6.3 `src/evaluation/`：`cs-metrics.ts`（policy/tone/resolution）+ `engine.ts`（realtime/gate/batch）+ `store.ts`
 - [ ] T6.4 `src/replay/`：session 事件加载 + `dsh-llm-replay` + 差分器 + 判定（accepted/diverged/regressed）
-- [ ] T6.5 `src/evolution/shadow-runner.ts` + `gate.ts`（评测→影子回放→冲突检测→风险分级）
+- [x] T6.5 `src/evolution/shadow-runner.ts` + `gate.ts`（评测→影子回放→冲突检测→风险分级）
 - [ ] T6.6 `src/lineage/`：DAG store + `LineageContext`
 - [ ] T6.7 `src/skills/curator.ts`：CREATE/IMPROVE/MERGE/ABSTRACT/PRUNE 五种变异 + 健康度
 - [ ] T6.8 `src/evolution/ablation/`：技能消融实验 runner + store
-- [ ] T6.9 `src/harness/plugins/tools-evolution.ts`：`evolution.propose`
-- [ ] T6.10 单测 + `tests/e2e/evolution.test.ts`、`tests/e2e/replay.test.ts`
+- [x] T6.9 `src/harness/plugins/tools-evolution.ts`：`evolution.propose`
+- [x] T6.10 单测 + `tests/e2e/evolution.test.ts`、`tests/e2e/replay.test.ts`
 - **验收**：低分会话触发提案 → 影子回放 → 门禁判定 → HITL 审批 → 生效
 
 ## P7 · 管理端与交付
@@ -209,3 +209,23 @@ Dockerfile / docker-compose / .env.example / README
 - `/stats` `/funnel` 这类固定段必须注册在 `/:id` 之前，否则会被当成路径参数
 - 节奏创建时就校验「每步至少有 template 或 goal」，而不是等到物化时才炸
 - Dockerfile 的构建上下文必须是**父目录**——dsh 以 link: 引用本地 checkout
+
+### P6（核心已完成）
+已完成：evaluation（CS 三指标 + store + 实时接入）、evolution（proposal store +
+gate + evolution.propose 工具 + 管理路由）
+**未完成**：T6.2 五维度 handler、T6.4 replay 差分器、T6.6 lineage DAG、
+T6.7 skill curator、T6.8 ablation
+
+核心立场（写进代码注释与门禁逻辑）：
+**改变 agent 行为准则的提案永远需要人工确认**。skill/cadence 维度、
+以及任何 deprecate 动作，都强制 needs_human。自动放行默认关闭，
+且即使开启也只对 memory 这类最低风险维度、置信度 ≥0.9、
+且来源会话评测全通过的提案生效。
+
+实测发现：
+- 评测指标的中文模式匹配不能要求词与词相邻——「马上就给你到账」里
+  承诺词与动作之间夹着「就给你」。已放宽为最多 4 字间隔
+- `render()` 返回的是**给模型的指令**（「不要编造政策」）。离线 mock 直接回显
+  会把内部指令发给客户。真实模型会理解并改写，但 mock 必须显式处理零命中分支
+- 提案去重用 partial unique index（只约束未决状态）：同一问题不会刷爆人工队列，
+  但已驳回后问题再现时仍可重新提出

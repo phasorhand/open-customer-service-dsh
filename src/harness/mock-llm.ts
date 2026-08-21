@@ -189,6 +189,11 @@ function replyOutcomeOf(text: string): string | undefined {
 }
 
 function summarize(text: string): string {
+  // 零命中：render() 给模型的是**指令**（「不要编造政策，请如实告知」），
+  // 直接回显会把内部指令发给客户。真实模型会理解并改写；mock 必须显式处理。
+  if (/没有找到|知识库中没有/.test(text)) {
+    return '这个问题我暂时没有查到明确的说明，不方便凭印象回答。我帮你转人工同事跟进，可以吗？'
+  }
   if (/拒绝|deny|作用域|越权|频控/.test(text)) {
     const firstLine = text.split('\n')[0] ?? ''
     return `抱歉，这个操作超出了当前会话的权限范围：${firstLine}。我已记录，请联系管理员处理。`
@@ -198,7 +203,9 @@ function summarize(text: string): string {
   const body = text
     .split('\n')
     .map((line) => line.replace(/^\d+\.\s*/, '').trim())
+    // 排除给模型的指令性内容——它们绝不能出现在给客户的话里
     .filter((line) => line !== '' && !/^(找到|订单|知识库中没有)/.test(line))
+    .filter((line) => !/不要编造|请如实告知|不要臆测|不要重复发送|不要向客户承诺/.test(line))
     .sort((a, b) => b.length - a.length)[0]
 
   if (body === undefined || body === '') {

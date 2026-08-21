@@ -16,6 +16,9 @@ import { ContactImporter } from './crm/importer.js'
 import { ContactService } from './crm/service.js'
 import { CRM_MIGRATIONS, ContactStore } from './crm/store.js'
 import { openDb, type Db } from './db/sqlite.js'
+import { EVAL_MIGRATIONS, EvalStore } from './evaluation/store.js'
+import { EvolutionGate } from './evolution/gate.js'
+import { EVOLUTION_MIGRATIONS, ProposalStore } from './evolution/store.js'
 import { assembleHarness, type Harness } from './harness/assemble.js'
 import type { RiskDecisionEntry } from './harness/plugins/guard-risk.js'
 import { memoryPorts } from './harness/ports-memory.js'
@@ -40,6 +43,9 @@ export interface OpenCsRuntime {
   readonly cadences: CadenceStore
   readonly outbox: SendOutbox
   readonly nurture: NurtureEngine
+  readonly evals: EvalStore
+  readonly proposals: ProposalStore
+  readonly gate: EvolutionGate
   /** 最近的风险裁决记录（P7 会换成 audit 表持久化）。 */
   readonly riskDecisions: readonly RiskDecisionEntry[]
   dispose(): Promise<void>
@@ -139,11 +145,22 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
   const cadences = new CadenceStore(nurtureDb)
   const outbox = new SendOutbox(nurtureDb)
 
+  // 评测与演进同库：门禁要读来源会话的评测结论，跨库读会失去事务一致性
+  const evolutionDb: Db = openDb(join(config.paths.dataDir, 'evolution.db'), [
+    ...EVAL_MIGRATIONS,
+    ...EVOLUTION_MIGRATIONS.map((migration) => ({ ...migration, id: migration.id + 100 })),
+  ])
+  const evals = new EvalStore(evolutionDb)
+  const proposals = new ProposalStore(evolutionDb)
+  // 自动放行默认关闭：生产开启前应先积累人工审批数据，确认提案质量
+  const gate = new EvolutionGate(proposals, evals)
+
   const riskDecisions: RiskDecisionEntry[] = []
   const harness = await assembleHarness({
     config,
     ports,
     contacts,
+    evolution: { proposals, gate },
     onRiskDecision: (entry) => {
       riskDecisions.push(entry)
       if (riskDecisions.length > RISK_LOG_CAP) riskDecisions.splice(0, riskDecisions.length - RISK_LOG_CAP)
@@ -181,6 +198,9 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
     cadences,
     outbox,
     nurture,
+    evals,
+    proposals,
+    gate,
     riskDecisions,
     async dispose(): Promise<void> {
       await nurture.stop()
@@ -190,6 +210,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
       knowledgeDb.close()
       crmDb.close()
       nurtureDb.close()
+      evolutionDb.close()
     },
   }
 }

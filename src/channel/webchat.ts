@@ -101,6 +101,21 @@ export class WebChatAdapter implements ChannelAdapter {
   }
 
   /**
+   * 查看某会话待取的出站文本，**不消费队列**。
+   *
+   * 用于评测等旁路观察——它不能把消息从队列里拿走，
+   * 否则 HTTP 响应就拿不到回复了。
+   *
+   * @param conversationId - 会话 id。
+   * @returns 拼接后的文本；无待发消息时为空串。
+   */
+  peek(conversationId: string): string {
+    return (this.pending.get(conversationId) ?? [])
+      .flatMap((action) => action.content.map((part) => part.text ?? ''))
+      .join('\n')
+  }
+
+  /**
    * 取走某会话累积的出站消息（HTTP 请求/响应模式）。
    *
    * @param conversationId - 会话 id。

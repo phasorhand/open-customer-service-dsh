@@ -25,6 +25,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 
 import type { RuntimeConfig } from '../config.js'
 import type { ContactService } from '../crm/service.js'
+import type { EvolutionToolDeps } from './plugins/tools-evolution.js'
 import { DshSkillRepo } from '../skills/repo.js'
 import { MOCK_MODEL, MOCK_PROVIDER, apply as applyMockLlm, inject as mockInject } from './mock-llm.js'
 import * as GuardRisk from './plugins/guard-risk.js'
@@ -32,6 +33,7 @@ import type { RiskDecisionEntry } from './plugins/guard-risk.js'
 import * as GuardScope from './plugins/guard-scope.js'
 import * as PromptSections from './plugins/prompt-sections.js'
 import * as ToolsCrm from './plugins/tools-crm.js'
+import * as ToolsEvolution from './plugins/tools-evolution.js'
 import * as ToolsCs from './plugins/tools-cs.js'
 import type { HarnessPorts } from './ports.js'
 import { bindScope, type TenantScope } from './session-scope.js'
@@ -51,6 +53,8 @@ export interface HarnessOptions {
   readonly ports: HarnessPorts
   /** 联系人服务。省略则不挂 CRM 工具（P1/P3 的纯客服形态）。 */
   readonly contacts?: ContactService
+  /** 演进依赖。省略则不挂 evolution.propose。 */
+  readonly evolution?: EvolutionToolDeps
   /** 风险裁决审计回调；P7 接到 audit 表。 */
   readonly onRiskDecision?: (entry: RiskDecisionEntry) => void
 }
@@ -142,6 +146,9 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
   await mount({ name: ToolsCs.name, inject: ToolsCs.inject, apply: ToolsCs.apply }, ports)
   if (options.contacts !== undefined) {
     await mount({ name: ToolsCrm.name, inject: ToolsCrm.inject, apply: ToolsCrm.apply }, options.contacts)
+  }
+  if (options.evolution !== undefined) {
+    await mount({ name: ToolsEvolution.name, inject: ToolsEvolution.inject, apply: ToolsEvolution.apply }, options.evolution)
   }
 
   // guard 链：scope 在前（权限事实），risk 在后（风险偏好）

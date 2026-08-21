@@ -9,7 +9,7 @@ import websocket from '@fastify/websocket'
 import Fastify, { type FastifyInstance } from 'fastify'
 
 import type { OpenCsRuntime } from '../runtime.js'
-import { registerAdminRoutes } from './routes-admin.js'
+import { registerAdminRoutes, registerEvolutionRoutes } from './routes-admin.js'
 import { registerCadenceRoutes } from './routes-cadences.js'
 import { registerChannelRoutes } from './routes-channels.js'
 import { registerContactRoutes } from './routes-contacts.js'
@@ -47,6 +47,7 @@ export async function createApp(runtime: OpenCsRuntime): Promise<FastifyInstance
   registerHealthRoutes(app, runtime)
   registerChannelRoutes(app, runtime)
   registerAdminRoutes(app, runtime)
+  registerEvolutionRoutes(app, runtime)
   registerContactRoutes(app, runtime)
   registerCadenceRoutes(app, runtime)
   await registerWsRoutes(app, runtime)

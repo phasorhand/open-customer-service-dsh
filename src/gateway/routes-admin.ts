@@ -141,3 +141,117 @@ export function registerAdminRoutes(app: FastifyInstance, runtime: OpenCsRuntime
     }
   })
 }
+
+/**
+ * 演进与评测的管理路由。
+ *
+ * 单独一个函数是因为它们只在 P6 装配存在时才有意义，
+ * 便于未来做成可选挂载。
+ */
+export function registerEvolutionRoutes(app: FastifyInstance, runtime: OpenCsRuntime): void {
+  app.get(
+    '/admin/proposals',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            tenant_id: { type: 'string' },
+            status: { type: 'string', enum: ['pending', 'gated', 'approved', 'rejected', 'applied'] },
+            dimension: { type: 'string', enum: ['skill', 'knowledge', 'memory', 'cadence'] },
+            limit: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
+          },
+        },
+      },
+    },
+    async (request) => {
+      const query = request.query as {
+        tenant_id?: string
+        status?: 'pending' | 'gated' | 'approved' | 'rejected' | 'applied'
+        dimension?: 'skill' | 'knowledge' | 'memory' | 'cadence'
+        limit?: number
+      }
+      const tenant = query.tenant_id ?? runtime.config.tenantId
+      return {
+        counts: runtime.proposals.countByStatus(tenant),
+        items: runtime.proposals.list(tenant, {
+          ...(query.status === undefined ? {} : { status: query.status }),
+          ...(query.dimension === undefined ? {} : { dimension: query.dimension }),
+          limit: query.limit ?? 50,
+        }),
+      }
+    },
+  )
+
+  app.get('/admin/proposals/:proposalId', async (request, reply) => {
+    const { proposalId } = request.params as { proposalId: string }
+    const proposal = runtime.proposals.get(proposalId)
+    if (proposal === undefined) {
+      void reply.status(404)
+      return { error: 'not_found', message: `提案 ${proposalId} 不存在` }
+    }
+    return {
+      proposal,
+      // 门禁结论的依据：来源会话的评测记录
+      source_evaluations:
+        proposal.sourceConversationId === undefined
+          ? []
+          : runtime.evals.byConversation(proposal.sourceConversationId),
+    }
+  })
+
+  for (const action of ['approve', 'reject'] as const) {
+    app.post(
+      `/admin/proposals/:proposalId/${action}`,
+      {
+        schema: {
+          body: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['reviewer'],
+            properties: { reviewer: { type: 'string', minLength: 1 }, note: { type: 'string' } },
+          },
+        },
+      },
+      async (request, reply) => {
+        const { proposalId } = request.params as { proposalId: string }
+        const body = request.body as { reviewer: string; note?: string }
+        try {
+          const proposal = runtime.proposals.review(proposalId, action === 'approve', body.reviewer, body.note)
+          return { proposal }
+        } catch (error) {
+          // 状态机拒绝是预期内的业务结果，用 422
+          void reply.status(422)
+          return { error: 'invalid_state', message: String(error instanceof Error ? error.message : error) }
+        }
+      },
+    )
+  }
+
+  app.get('/admin/evaluations/summary', async (request) => {
+    const { tenant_id: tenantId } = request.query as { tenant_id?: string }
+    return runtime.evals.summary(tenantId ?? runtime.config.tenantId)
+  })
+
+  app.get(
+    '/admin/evaluations/failing',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            tenant_id: { type: 'string' },
+            limit: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
+          },
+        },
+      },
+    },
+    async (request) => {
+      const { tenant_id: tenantId, limit = 50 } = request.query as { tenant_id?: string; limit?: number }
+      const items = runtime.evals.failing(tenantId ?? runtime.config.tenantId, limit)
+      return { total: items.length, items }
+    },
+  )
+}

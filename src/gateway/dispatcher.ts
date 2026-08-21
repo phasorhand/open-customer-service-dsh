@@ -8,8 +8,10 @@
 
 import type { InboundMessage } from '../channel/types.js'
 import { textOf } from '../channel/types.js'
+import { evaluateAll } from '../evaluation/cs-metrics.js'
 import type { TenantScope } from '../harness/session-scope.js'
 import type { OpenCsRuntime } from '../runtime.js'
+import type { SessionEventLike } from './frames.js'
 
 export interface DispatchResult {
   readonly conversationId: string
@@ -58,8 +60,58 @@ export class InboundDispatcher {
     }
     const agent = await this.runtime.harness.agentFor(scope)
     const fromSeq = lastSeq(agent) + 1
-    await this.runtime.harness.runTurn(agent, textOf(message.content))
-    return { conversationId: message.conversationId, fromSeq, toSeq: lastSeq(agent) }
+    const inputText = textOf(message.content)
+    await this.runtime.harness.runTurn(agent, inputText)
+    const toSeq = lastSeq(agent)
+
+    this.evaluateTurn(message, inputText, agent, fromSeq, toSeq)
+    return { conversationId: message.conversationId, fromSeq, toSeq }
+  }
+
+  /**
+   * 对本轮回复做实时评测。
+   *
+   * 只跑确定性规则（越权承诺、语气、推进度），不调模型——
+   * 每轮都调 LLM 评分会让成本翻倍且拖慢回复。主观质量判断留给 gate 阶段。
+   *
+   * 评测失败**不阻断回复**：话已经发出去了，评测的作用是留下证据供演进，
+   * 而不是事后拦截。
+   */
+  private evaluateTurn(
+    message: InboundMessage,
+    inputText: string,
+    agent: { readonly session: { readonly events: readonly SessionEventLike[] } },
+    fromSeq: number,
+    toSeq: number,
+  ): void {
+    try {
+      const fresh = agent.session.events.filter((event) => event.seq >= fromSeq && event.seq <= toSeq)
+      const outputText = this.runtime.webchat.peek(message.conversationId)
+      if (outputText === '') return
+
+      const toolsUsed = fresh
+        .filter((event) => event.type === 'tool/call')
+        .map((event) => (event.data as { name?: string }).name ?? '')
+      const knowledgeHits = knowledgeHitCount(fresh)
+
+      const { results, passed } = evaluateAll({
+        input: inputText,
+        output: outputText,
+        toolsUsed,
+        ...(knowledgeHits === undefined ? {} : { knowledgeHits }),
+      })
+      this.runtime.evals.save({
+        tenantId: message.tenantId,
+        conversationId: message.conversationId,
+        mode: 'realtime',
+        passed,
+        metrics: results,
+        inputText,
+        outputText,
+      })
+    } catch {
+      // 评测是旁路：它出问题不该影响客户已经收到的回复
+    }
   }
 
   private resolveContact(message: InboundMessage): { readonly id: string } | undefined {
@@ -76,6 +128,16 @@ export class InboundDispatcher {
   private onContactError(_message: InboundMessage, _error: unknown): void {
     // 有意为空：失败已由 resolveContact 降级处理，此处只是扩展点
   }
+}
+
+/** 从本轮事件里取知识库命中数，供「零命中却给确定答复」的合规判定。 */
+function knowledgeHitCount(events: readonly SessionEventLike[]): number | undefined {
+  for (const event of events) {
+    if (event.type !== 'tool/result') continue
+    const meta = (event.data as { meta?: { type?: string; items?: unknown[] } }).meta
+    if (meta?.type === 'knowledge_hit') return Array.isArray(meta.items) ? meta.items.length : 0
+  }
+  return undefined
 }
 
 function lastSeq(agent: { readonly session: { readonly events: readonly { readonly seq: number }[] } }): number {
