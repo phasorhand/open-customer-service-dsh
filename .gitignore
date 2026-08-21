@@ -1,0 +1,17 @@
+node_modules/
+dist/
+lib/
+*.tsbuildinfo
+
+# 运行期数据
+data/
+.sessions/
+.sessions-smoke/
+*.db
+*.db-wal
+*.db-shm
+
+.env
+.env.local
+.DS_Store
+coverage/
