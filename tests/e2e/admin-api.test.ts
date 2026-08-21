@@ -51,6 +51,9 @@ const validCadence = {
   sender_persona: 'OpenCS 的小林',
   auto_enroll: true,
   entry_filter: { rules: [{ field: 'addressable', operator: 'eq', value: true }] },
+  // 手动 tick 测试用真实时钟——必须关掉静默时段，否则晚上 10 点后测试会变红
+  quiet_hours_start: 0,
+  quiet_hours_end: 0,
   steps: [
     { step_order: 0, delay_seconds: 0, template: '{{name}}你好' },
     { step_order: 1, delay_seconds: 3600, goal: '邀约体验' },

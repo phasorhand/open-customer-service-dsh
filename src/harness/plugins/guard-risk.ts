@@ -14,6 +14,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 
 import { RiskTier, TIER_LABEL, tierOf } from '../risk.js'
+import { scopeOf, sessionIdOf, type TenantScope } from '../session-scope.js'
 
 export const name = 'opencs-guard-risk'
 export const inject = ['tools']
@@ -25,6 +26,22 @@ export interface RiskGuardConfig {
   readonly rateLimiter?: RateLimiter
   /** 审计回调；每次裁决都会调用一次。 */
   readonly onDecision?: (entry: RiskDecisionEntry) => void
+  /**
+   * ask 分支的落队回调。
+   *
+   * headless 环境没有 answerer，dsh 会把 ask 当 deny——若不落一条待批项，
+   * 这次动作就**无声消失**了。回调返回审批项 id（用于拼进给模型的理由），
+   * 或 undefined（未入队，例如去重命中）。
+   */
+  readonly onAsk?: (request: AskRequest) => string | undefined
+}
+
+/** 一次待人工确认的动作请求。`scope` 可能缺失（非 agent 调用）。 */
+export interface AskRequest {
+  readonly toolName: string
+  readonly tier: RiskTier
+  readonly args: Readonly<Record<string, unknown>> | undefined
+  readonly scope: TenantScope | undefined
 }
 
 /** 一次风险裁决的审计记录。 */
@@ -65,7 +82,22 @@ export function apply(ctx: Context, config: RiskGuardConfig): void {
     }
 
     if (!autoApprove.has(tier)) {
-      const reason = `${exec.name} 属于 ${TIER_LABEL[tier]}，需人工确认后执行`
+      // 先落待批项再返回 ask：headless 下 ask 等价 deny，不落队这次动作就无声消失
+      let approvalId: string | undefined
+      try {
+        approvalId = config.onAsk?.({
+          toolName: exec.name,
+          tier,
+          args,
+          scope: scopeOf(sessionIdOf(exec)),
+        })
+      } catch {
+        // 落队失败不改变裁决：宁可丢一条待办也不能让审批被绕过
+      }
+      const reason =
+        approvalId === undefined
+          ? `${exec.name} 属于 ${TIER_LABEL[tier]}，需人工确认后执行`
+          : `${exec.name} 属于 ${TIER_LABEL[tier]}，已生成待批草稿（${approvalId.slice(0, 8)}），等待人工确认后发送`
       config.onDecision?.({ toolName: exec.name, tier, decision: 'ask', reason, at: new Date() })
       return { kind: 'ask' as const, reason }
     }

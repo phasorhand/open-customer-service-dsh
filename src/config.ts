@@ -85,7 +85,9 @@ const EnvSchema = z.object({
   OPENAI_BASE_URL: optionalStr,
 
   OPENCS_ACTION_TOKEN_SECRET: optionalStr,
+  OPENCS_ADMIN_TOKEN: optionalStr,
   OPENCS_AUTO_APPROVE_TIERS: tierList([0, 1, 2, 3]),
+  OPENCS_WEBHOOK_RATE_LIMIT: int(20, 1, 10_000),
 
   OPENCS_NURTURE_ENABLED: bool(true),
   OPENCS_NURTURE_POLL_INTERVAL: int(60, 1, 86_400),
@@ -93,8 +95,10 @@ const EnvSchema = z.object({
   OPENCS_NURTURE_LEASE_SECONDS: int(300, 30, 7_200),
 
   WECOM_CORP_ID: optionalStr,
+  WECOM_CORP_SECRET: optionalStr,
   WECOM_TOKEN: optionalStr,
   WECOM_ENCODING_AES_KEY: optionalStr,
+  WECOM_OPEN_KFID: optionalStr,
 
   LANGFUSE_HOST: optionalStr,
   LANGFUSE_PUBLIC_KEY: optionalStr,
@@ -124,8 +128,12 @@ export interface NurtureConfig {
 
 export interface WecomConfig {
   readonly corpId: string
+  /** 应用凭证密钥，调用发送/拉取 API 需要。 */
+  readonly corpSecret: string
   readonly token: string
   readonly encodingAesKey: string
+  /** 客服账号 id（open_kfid）。省略时从回调事件里推断。 */
+  readonly openKfId?: string
 }
 
 export interface RuntimeConfig {
@@ -136,6 +144,14 @@ export interface RuntimeConfig {
   readonly paths: PathConfig
   readonly llm: LlmConfig
   readonly actionTokenSecret: string
+  /**
+   * 管理 API 的 Bearer token。
+   *
+   * 生产必填；开发允许缺省（警告后放行，便于本地调试）。
+   */
+  readonly adminToken?: string
+  /** 每会话每分钟的 webhook 消息上限。 */
+  readonly webhookRateLimit: number
   /** 自动放行的风险档；不在其中的档位走 HITL（ask）。 */
   readonly autoApproveTiers: readonly number[]
   readonly nurture: NurtureConfig
@@ -187,6 +203,16 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): RuntimeConf
     }
   }
 
+  const adminToken = raw.OPENCS_ADMIN_TOKEN
+  if (isProduction) {
+    if (adminToken === undefined) {
+      throw new ConfigError('生产环境必须设置 OPENCS_ADMIN_TOKEN（管理 API 的访问凭证）')
+    }
+    if (Buffer.byteLength(adminToken, 'utf8') < 16) {
+      throw new ConfigError('OPENCS_ADMIN_TOKEN 至少需要 16 字节')
+    }
+  }
+
   const wecom = resolveWecom(raw)
   const langfuse = resolveLangfuse(raw)
 
@@ -199,6 +225,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): RuntimeConf
     llm,
     // 非生产环境允许临时密钥：仅用于本进程生命周期内的 token 签名
     actionTokenSecret: secret ?? ephemeralSecret(),
+    ...(adminToken === undefined ? {} : { adminToken }),
+    webhookRateLimit: raw.OPENCS_WEBHOOK_RATE_LIMIT,
     autoApproveTiers: Object.freeze(raw.OPENCS_AUTO_APPROVE_TIERS),
     nurture: {
       enabled: raw.OPENCS_NURTURE_ENABLED,
@@ -237,16 +265,24 @@ function resolveLlm(raw: ParsedEnv, isProduction: boolean): LlmConfig {
 }
 
 function resolveWecom(raw: ParsedEnv): WecomConfig | undefined {
-  const fields = [raw.WECOM_CORP_ID, raw.WECOM_TOKEN, raw.WECOM_ENCODING_AES_KEY]
+  const fields = [raw.WECOM_CORP_ID, raw.WECOM_CORP_SECRET, raw.WECOM_TOKEN, raw.WECOM_ENCODING_AES_KEY]
   const present = fields.filter((f) => f !== undefined).length
-  if (present === 0) return undefined
+  if (present === 0 && raw.WECOM_OPEN_KFID === undefined) return undefined
   if (present !== fields.length) {
-    throw new ConfigError('WECOM_CORP_ID / WECOM_TOKEN / WECOM_ENCODING_AES_KEY 必须同时配置')
+    throw new ConfigError(
+      'WECOM_CORP_ID / WECOM_CORP_SECRET / WECOM_TOKEN / WECOM_ENCODING_AES_KEY 必须同时配置',
+    )
+  }
+  const key = raw.WECOM_ENCODING_AES_KEY as string
+  if (key.length !== 43) {
+    throw new ConfigError(`WECOM_ENCODING_AES_KEY 必须是 43 位字符（收到 ${key.length} 位）`)
   }
   return {
     corpId: raw.WECOM_CORP_ID as string,
+    corpSecret: raw.WECOM_CORP_SECRET as string,
     token: raw.WECOM_TOKEN as string,
-    encodingAesKey: raw.WECOM_ENCODING_AES_KEY as string,
+    encodingAesKey: key,
+    ...(raw.WECOM_OPEN_KFID === undefined ? {} : { openKfId: raw.WECOM_OPEN_KFID }),
   }
 }
 

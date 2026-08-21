@@ -5,13 +5,13 @@
 这是 [`open-customer-service`](../open-customer-service)（Python / FastAPI）的完全重写版：
 Agent 运行时不再自建，转由 dsh 承担；OpenCS 只保留 dsh 不提供的 CS/CRM 业务语义。
 
-> **状态**：核心链路已全部打通并端到端验证（**424 tests**）。
+> **状态**：核心链路与产品化层已完成并端到端验证。
 >
 > | 已完成 | 待办 |
 > |---|---|
-> | dsh 内嵌 agent 内核 · 渠道网关 · HTTP/WS 帧协议 · FTS5 知识库与热重载 · 技能库与两轮选择 · CRM 漏斗与分群 · 节奏引擎与全自动成单 · CS 评测 · 演进门禁 · 管理 API · Docker | 企微渠道适配器 · Next.js 管理端迁移 · 技能自策展 / 消融实验 / 回放差分器 |
+> | dsh 内嵌 agent 内核 · 渠道网关（webchat + **企微客服**）· HTTP/WS 帧协议 · FTS5 知识库与热重载 · 技能库与两轮选择 · CRM 漏斗与分群 · 节奏引擎与全自动成单 · CS 评测 · 演进门禁 · **管理面鉴权 · HITL 审批闭环 · 持久化审计 · webhook 频控 · 管理控制台 · OpenAI 兼容网关** · Docker | 技能自策展 / 消融实验 / 回放差分器 · 多实例水平扩展（BullMQ 切换点已预留） |
 >
-> 进度与实测结论见 `docs/superpowers/plans/2026-08-21-rewrite-master-plan.md`。
+> 进度见 `docs/superpowers/plans/`，客户交付文档见 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。
 
 ---
 
@@ -74,6 +74,9 @@ pnpm dev            # 起服务 → http://localhost:8080
 
 未配置 LLM API key 时自动降级为**确定性 mock 模型**——完整走 agent loop、
 guard、工具执行与 session 持久化，只是 token 由规则生成。CI 无 key 也能全绿。
+
+打开 **http://localhost:8080/console** 即是管理控制台（总览 / 联系人导入 /
+节奏 / 审批队列 / 演进提案 / 审计 / 对话测试），单文件零构建，随服务分发。
 
 ### 试一下：客服问答
 
@@ -191,8 +194,10 @@ apps/admin-web (Next.js，待迁移)
 
 1. **LLM 永不直接执行不可逆动作**
    发消息 / 改生命周期 / 写标签一律经 `defineTool` 收口，由 `tools/pre-execute`
-   guard 链做租户隔离 + 风险分级 + 频控。`channel.reply` 默认 ORANGE_C 档 —— 需人工确认。
-   放开它靠改 `OPENCS_AUTO_APPROVE_TIERS`，是一个**显式的运营决策**，不是代码默认值。
+   guard 链做租户隔离 + 风险分级 + 频控。`channel.reply` 默认 ORANGE_C 档——
+   回复**进入审批队列**（不是消失）：运营在控制台看到将发送的原文，
+   批准后系统确定性投递，**批准的就是发出的**，不再经过模型。
+   放开自动回复靠改 `OPENCS_AUTO_APPROVE_TIERS`，是一个**显式的运营决策**。
 
 2. **卡片不是自建协议，是 `defineTool` 的 `presentationMeta`**
    纯函数投影，随 `tool/result` 事件持久化 → 回放免费，实时与历史不可能不同步。
@@ -226,15 +231,17 @@ apps/admin-web (Next.js，待迁移)
 | `OPENCS_TENANT_ID` | `default` | 默认租户 |
 | `OPENCS_HOST` / `OPENCS_PORT` | `0.0.0.0` / `8080` | 监听地址 |
 | `DEEPSEEK_API_KEY` | — | 配置后走 dsh-llm-deepseek |
-| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — | OpenAI 兼容网关（provider 待接入） |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — | OpenAI 兼容网关（自建代理/中转均可） |
 | `OPENCS_MODEL` | `deepseek-chat` | 模型 id |
 | `OPENCS_ACTION_TOKEN_SECRET` | — | **生产必填**，≥32 字节 |
+| `OPENCS_ADMIN_TOKEN` | — | **生产必填**，≥16 字节；管理 API / 控制台的 Bearer 凭证 |
+| `OPENCS_WEBHOOK_RATE_LIMIT` | `20` | webhook 每会话每分钟消息上限 |
 | `OPENCS_AUTO_APPROVE_TIERS` | `0,1,2,3` | 自动放行的风险档 |
 | `OPENCS_NURTURE_ENABLED` | `true` | 节奏引擎开关（P5） |
 | `OPENCS_NURTURE_POLL_INTERVAL` | `60` | tick 间隔（秒） |
 | `OPENCS_NURTURE_DRAIN_CONCURRENCY` | `8` | 并发投递数 |
 | `OPENCS_NURTURE_LEASE_SECONDS` | `300` | 发件租约时长 |
-| `WECOM_*` | — | 企微三件套，必须同时配置（适配器待实现） |
+| `WECOM_*` | — | 企微客服四件套（CORP_ID/CORP_SECRET/TOKEN/ENCODING_AES_KEY），接入步骤见 DEPLOYMENT.md |
 | `LANGFUSE_*` | — | 可选观测 |
 
 生产环境缺少必填项或降级为 mock 模型会**直接启动失败**，不静默降级。

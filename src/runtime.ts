@@ -7,10 +7,13 @@
 
 import { join } from 'node:path'
 
+import { ApprovalQueue, APPROVAL_MIGRATIONS } from './approval/queue.js'
+import { AuditStore, AUDIT_MIGRATIONS } from './audit/store.js'
 import { ChannelRegistry } from './channel/adapter.js'
 import type { OutboundAction } from './channel/types.js'
 import { textContent } from './channel/types.js'
 import { WebChatAdapter, WEBCHAT_CHANNEL_ID } from './channel/webchat.js'
+import { WecomAdapter } from './channel/wecom.js'
 import type { RuntimeConfig } from './config.js'
 import { ContactImporter } from './crm/importer.js'
 import { ContactService } from './crm/service.js'
@@ -35,6 +38,8 @@ export interface OpenCsRuntime {
   readonly config: RuntimeConfig
   readonly channels: ChannelRegistry
   readonly webchat: WebChatAdapter
+  /** 企微客服适配器；未配置企微时为 undefined。 */
+  readonly wecom?: WecomAdapter
   readonly harness: Harness
   readonly knowledge: SqliteKnowledgeStore
   readonly contacts: ContactService
@@ -46,7 +51,11 @@ export interface OpenCsRuntime {
   readonly evals: EvalStore
   readonly proposals: ProposalStore
   readonly gate: EvolutionGate
-  /** 最近的风险裁决记录（P7 会换成 audit 表持久化）。 */
+  readonly audit: AuditStore
+  readonly approvals: ApprovalQueue
+  /** 出站端口（审批通过后的确定性投递也走它）。 */
+  readonly outbound: OutboundPort
+  /** 最近的风险裁决（内存快视图；持久化在 audit 表）。 */
   readonly riskDecisions: readonly RiskDecisionEntry[]
   dispose(): Promise<void>
 }
@@ -119,6 +128,12 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
   const webchat = new WebChatAdapter(config.tenantId)
   channels.register(webchat)
 
+  let wecom: WecomAdapter | undefined
+  if (config.wecom !== undefined) {
+    wecom = new WecomAdapter({ config: config.wecom, tenantId: config.tenantId })
+    channels.register(wecom)
+  }
+
   const knowledgeDb: Db = openDb(join(config.paths.dataDir, 'knowledge.db'), KNOWLEDGE_MIGRATIONS)
   const knowledge = new SqliteKnowledgeStore(knowledgeDb)
   const ingestor = new KnowledgeIngestor({ root: config.paths.knowledgeDir, tenantId: config.tenantId, store: knowledge })
@@ -155,6 +170,13 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
   // 自动放行默认关闭：生产开启前应先积累人工审批数据，确认提案质量
   const gate = new EvolutionGate(proposals, evals)
 
+  const auditDb: Db = openDb(join(config.paths.dataDir, 'audit.db'), [
+    ...AUDIT_MIGRATIONS,
+    ...APPROVAL_MIGRATIONS.map((migration) => ({ ...migration, id: migration.id + 100 })),
+  ])
+  const audit = new AuditStore(auditDb)
+  const approvals = new ApprovalQueue(auditDb)
+
   const riskDecisions: RiskDecisionEntry[] = []
   const harness = await assembleHarness({
     config,
@@ -164,6 +186,35 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
     onRiskDecision: (entry) => {
       riskDecisions.push(entry)
       if (riskDecisions.length > RISK_LOG_CAP) riskDecisions.splice(0, riskDecisions.length - RISK_LOG_CAP)
+      try {
+        // 持久化审计是旁路：它自身出错不能打断工具执行
+        audit.append({
+          tool: entry.toolName,
+          tier: entry.tier,
+          decision: entry.decision,
+          ...(entry.reason === undefined ? {} : { reason: entry.reason }),
+          at: entry.at,
+        })
+      } catch {
+        // 已有内存投影兜底；SQLite 故障时不再级联
+      }
+    },
+    onAsk: (request) => {
+      // 没有 scope（非 agent 调用）无法定位投递目标，不入队
+      if (request.scope === undefined) return undefined
+      const preview = previewOf(request.toolName, request.args)
+      const { item } = approvals.enqueue({
+        tenantId: request.scope.tenantId,
+        conversationId: request.scope.conversationId,
+        channelId: request.scope.channelId,
+        customerId: request.scope.customerId,
+        ...(request.scope.contactId === undefined ? {} : { contactId: request.scope.contactId }),
+        tool: request.toolName,
+        args: request.args ?? {},
+        preview,
+      })
+      // 去重命中时返回已有待批项的 id——模型看到的理由仍指向同一条待办
+      return item.id
     },
   })
 
@@ -190,6 +241,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
     config,
     channels,
     webchat,
+    ...(wecom === undefined ? {} : { wecom }),
     harness,
     knowledge,
     contacts,
@@ -201,6 +253,9 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
     evals,
     proposals,
     gate,
+    audit,
+    approvals,
+    outbound: ports.outbound,
     riskDecisions,
     async dispose(): Promise<void> {
       await nurture.stop()
@@ -211,8 +266,16 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
       crmDb.close()
       nurtureDb.close()
       evolutionDb.close()
+      auditDb.close()
     },
   }
+}
+
+/** 给审核者看的动作摘要。对发消息类工具就是将要发出的正文。 */
+function previewOf(toolName: string, args: Readonly<Record<string, unknown>> | undefined): string {
+  const text = args?.['text']
+  if (typeof text === 'string' && text !== '') return text
+  return `${toolName} ${JSON.stringify(args ?? {})}`.slice(0, 500)
 }
 
 export { WEBCHAT_CHANNEL_ID }

@@ -109,6 +109,18 @@ class OpenCsMockAdapter extends LlmAdapter {
   }
 
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    // 死循环保险丝：单轮对话里工具结果超过阈值说明 mock 的结果识别漏了某种文案，
+    // 在陷入「重试→被拒→再重试」之前强制收尾。真实模型靠理解语义不需要这层。
+    const toolResultCount = options.messages.filter((message) =>
+      message.content.some((block) => block.type === 'tool-result'),
+    ).length
+    if (toolResultCount >= 6) {
+      yield* streamText('这个请求我暂时处理不了，已记录，请人工跟进。')
+      yield { type: 'usage', usage: { inputTokens: 32, outputTokens: 16 } }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+      return
+    }
+
     const last = options.messages.at(-1)
     const toolResult = last?.content.find((block) => block.type === 'tool-result')
 
@@ -181,7 +193,9 @@ function textOfResult(toolResult: { readonly content: readonly { readonly type: 
  */
 function replyOutcomeOf(text: string): string | undefined {
   if (/回复已送达/.test(text)) return '好的，已经答复客户了。'
-  if (/需人工确认/.test(text)) return '答复草稿已生成，按当前策略需要人工确认后才能发送给客户。'
+  // 两种措辞都要认：guard 在落入审批队列时的文案是「已生成待批草稿…等待人工确认」，
+  // 未落队时是「需人工确认后执行」。漏认任何一种都会让 mock 无限重试 channel.reply
+  if (/人工确认|待批草稿/.test(text)) return '答复草稿已生成，按当前策略需要人工确认后才能发送给客户。'
   if (/回复未能送达/.test(text)) return '答复没能送达客户，我不重复发送，请人工跟进。'
   if (/未经服务端注入|作用域|越权/.test(text)) return '抱歉，当前会话缺少必要的权限上下文，我无法处理这个请求。'
   if (/频控/.test(text)) return '触达频率已达上限，本次不再发送，稍后再试。'

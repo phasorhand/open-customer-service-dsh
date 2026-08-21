@@ -16,6 +16,7 @@ import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
+import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
@@ -29,7 +30,7 @@ import type { EvolutionToolDeps } from './plugins/tools-evolution.js'
 import { DshSkillRepo } from '../skills/repo.js'
 import { MOCK_MODEL, MOCK_PROVIDER, apply as applyMockLlm, inject as mockInject } from './mock-llm.js'
 import * as GuardRisk from './plugins/guard-risk.js'
-import type { RiskDecisionEntry } from './plugins/guard-risk.js'
+import type { AskRequest, RiskDecisionEntry } from './plugins/guard-risk.js'
 import * as GuardScope from './plugins/guard-scope.js'
 import * as PromptSections from './plugins/prompt-sections.js'
 import * as ToolsCrm from './plugins/tools-crm.js'
@@ -55,8 +56,10 @@ export interface HarnessOptions {
   readonly contacts?: ContactService
   /** 演进依赖。省略则不挂 evolution.propose。 */
   readonly evolution?: EvolutionToolDeps
-  /** 风险裁决审计回调；P7 接到 audit 表。 */
+  /** 风险裁决审计回调；接到 audit 表。 */
   readonly onRiskDecision?: (entry: RiskDecisionEntry) => void
+  /** ask 分支的审批落队回调。 */
+  readonly onAsk?: (request: AskRequest) => string | undefined
 }
 
 export interface Harness {
@@ -117,8 +120,23 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
     await mount(LlmDeepSeek, {})
     provider = 'deepseek-official'
     model = config.llm.model
+  } else if (config.llm.kind === 'openai-compatible') {
+    // 客户自建/代理网关：手声明一条 OpenAI 兼容路由（dsh-llm-pi-ai 的 hand-declared route）。
+    // apiKeyEnv 是**凭证引用**而不是值——密钥留在环境变量里，不进配置对象。
+    await mount(LlmPiAi, {
+      providers: {
+        'opencs-gateway': {
+          displayName: 'OpenCS Gateway',
+          apiKeyEnv: 'OPENAI_API_KEY',
+          api: 'openai-completions',
+          ...(config.llm.baseUrl === undefined ? {} : { baseURL: config.llm.baseUrl }),
+          models: [{ id: config.llm.model, contextWindow: 131_072 }],
+        },
+      },
+    })
+    provider = 'opencs-gateway'
+    model = config.llm.model
   }
-  // NOTE(P2): openai-compatible 走 dsh-llm-pi-ai，待该包接入后在此分支挂载
 
   // session 事件溯源 = 运行期审计与回放的数据源
   mkdirSync(config.paths.sessionsDir, { recursive: true })
@@ -156,6 +174,7 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
   await mount({ name: GuardRisk.name, inject: GuardRisk.inject, apply: GuardRisk.apply }, {
     autoApproveTiers: config.autoApproveTiers,
     ...(options.onRiskDecision === undefined ? {} : { onDecision: options.onRiskDecision }),
+    ...(options.onAsk === undefined ? {} : { onAsk: options.onAsk }),
   } satisfies GuardRisk.RiskGuardConfig)
 
   const agents = new Map<string, Agent>()

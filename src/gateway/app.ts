@@ -10,11 +10,15 @@ import Fastify, { type FastifyInstance } from 'fastify'
 
 import type { OpenCsRuntime } from '../runtime.js'
 import { registerAdminRoutes, registerEvolutionRoutes } from './routes-admin.js'
+import { registerApprovalRoutes } from './routes-approvals.js'
 import { registerCadenceRoutes } from './routes-cadences.js'
 import { registerChannelRoutes } from './routes-channels.js'
 import { registerContactRoutes } from './routes-contacts.js'
 import { registerHealthRoutes } from './routes-health.js'
+import { consoleHtml } from './console.js'
+import { registerWecomRoutes } from './routes-wecom.js'
 import { registerWsRoutes } from './ws.js'
+import { registerAuth, registerWebhookRateLimit } from './security.js'
 
 /** 请求体上限：入站 webhook 载荷不应很大；超限直接拒绝而不是拖垮进程。 */
 const BODY_LIMIT_BYTES = 1_048_576
@@ -44,12 +48,24 @@ export async function createApp(runtime: OpenCsRuntime): Promise<FastifyInstance
 
   app.decorate('opencs', runtime)
 
+  // 安全层先于路由：鉴权与频控是 onRequest/preHandler 钩子
+  registerAuth(app, runtime)
+  registerWebhookRateLimit(app, runtime)
+
   registerHealthRoutes(app, runtime)
   registerChannelRoutes(app, runtime)
   registerAdminRoutes(app, runtime)
   registerEvolutionRoutes(app, runtime)
   registerContactRoutes(app, runtime)
   registerCadenceRoutes(app, runtime)
+  registerApprovalRoutes(app, runtime)
+  if (runtime.wecom !== undefined) registerWecomRoutes(app, runtime, runtime.wecom)
+
+  // 管理控制台：HTML 本身不含敏感数据，数据接口仍受 Bearer 鉴权
+  app.get('/console', async (_request, reply) => {
+    void reply.type('text/html; charset=utf-8')
+    return consoleHtml()
+  })
   await registerWsRoutes(app, runtime)
 
   app.setErrorHandler((error: unknown, request, reply) => {

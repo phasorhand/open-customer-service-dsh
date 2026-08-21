@@ -77,23 +77,29 @@ export function registerAdminRoutes(app: FastifyInstance, runtime: OpenCsRuntime
             decision: { type: 'string', enum: ['allow', 'ask', 'deny'] },
             tool: { type: 'string' },
             limit: { type: 'integer', minimum: 1, maximum: 500, default: 100 },
+            offset: { type: 'integer', minimum: 0, default: 0 },
           },
         },
       },
     },
     async (request) => {
-      const { decision, tool, limit = 100 } = request.query as { decision?: string; tool?: string; limit?: number }
-      const filtered = runtime.riskDecisions
-        .filter((entry) => decision === undefined || entry.decision === decision)
-        .filter((entry) => tool === undefined || entry.toolName === tool)
-        .slice(-limit)
-        .reverse()
+      const { decision, tool, limit = 100, offset = 0 } = request.query as {
+        decision?: 'allow' | 'ask' | 'deny'
+        tool?: string
+        limit?: number
+        offset?: number
+      }
+      const filter = {
+        ...(decision === undefined ? {} : { decision }),
+        ...(tool === undefined ? {} : { tool }),
+      }
+      // 持久化审计：跨重启可查，满足合规回溯
+      const items = runtime.audit.list({ ...filter, limit, offset })
       return {
-        total: filtered.length,
-        // 内存投影，进程重启后清空；长期审计以 session 事件日志为准
-        note: '当前为内存投影；完整审计以 session 事件日志为准',
-        items: filtered.map((entry) => ({
-          tool: entry.toolName,
+        total: runtime.audit.count(filter),
+        items: items.map((entry) => ({
+          seq: entry.seq,
+          tool: entry.tool,
           tier: entry.tier,
           decision: entry.decision,
           reason: entry.reason ?? null,
@@ -136,6 +142,8 @@ export function registerAdminRoutes(app: FastifyInstance, runtime: OpenCsRuntime
       contacts: { total: runtime.contactStore.count(tenant), funnel: runtime.contactStore.funnel(tenant) },
       cadences: runtime.cadences.runStats(tenant),
       sends: runtime.outbox.countByStatus(tenant),
+      approvals: runtime.approvals.countByStatus(tenant),
+      proposals: runtime.proposals.countByStatus(tenant),
       knowledge: runtime.knowledge.status(tenant),
       llm: { provider: runtime.harness.provider, model: runtime.harness.model },
     }
