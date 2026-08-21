@@ -10,7 +10,7 @@
 | **P0** ✅ | 骨架与契约 | pnpm 工程 + dsh link + 契约测试 + config + db migration runner | — |
 | **P1** ✅ | dsh 内嵌最小闭环 | assembleHarness + 1 工具 + guard + mock LLM + smoke | P0 |
 | **P2** ✅ | 渠道与网关 | ChannelAdapter + WebChat + Fastify + WS 帧 + 入站→回复端到端 | P1 |
-| **P3** | 知识库与技能 | FTS5 知识库 + SKILL.md + 两轮技能选择 + prompt sections | P2 |
+| **P3** ✅ | 知识库与技能 | FTS5 知识库 + SKILL.md + 两轮技能选择 + prompt sections | P2 |
 | **P4** | CRM 与记忆 | ContactStore/Service/Importer/Segment + L2 记忆 + CRM 工具集 | P2 |
 | **P5** | 节奏与外呼 | SendOutbox + CadenceStore + NurtureEngine + Composer + subagent | P4 |
 | **P6** | 演进与评测 | Proposal/Gate/ShadowRunner + EvalEngine + Lineage + Replay + Ablation | P3,P4 |
@@ -62,14 +62,14 @@
 
 ## P3 · 知识库与技能
 
-- [ ] T3.1 `src/knowledge/parser.ts`：Markdown 按 `##` 分块 + frontmatter（gray-matter）
-- [ ] T3.2 `src/knowledge/store.ts`：FTS5 + CJK LIKE 兜底 + `upsertChunks/deleteBySource/status`
-- [ ] T3.3 `src/knowledge/ingestor.ts`：chokidar 监听 + 增量重建
-- [ ] T3.4 `src/skills/repo.ts`：`ctx.skills` + `dsh-skill-filesystem` 薄封装；`buildIndex()` 紧凑索引
-- [ ] T3.5 `src/harness/plugins/prompt-sections.ts`：persona / 技能索引 / L2 摘要注入（`ctx.systemPrompt.section`）
-- [ ] T3.6 两轮技能选择：Round1 索引 → `[SKILLS: ...]` → Round2 正文注入
-- [ ] T3.7 `knowledge/` 与 `skills/` 示例内容（退款政策、问候、订单查询）
-- [ ] T3.8 单测 + `tests/e2e/knowledge.test.ts`
+- [x] T3.1 `src/knowledge/parser.ts`：Markdown 按 `##` 分块 + frontmatter（gray-matter）
+- [x] T3.2 `src/knowledge/store.ts`：FTS5 + CJK LIKE 兜底 + `upsertChunks/deleteBySource/status`
+- [x] T3.3 `src/knowledge/ingestor.ts`：chokidar 监听 + 增量重建
+- [x] T3.4 `src/skills/repo.ts`：`ctx.skills` + `dsh-skill-filesystem` 薄封装；`buildIndex()` 紧凑索引
+- [x] T3.5 `src/harness/plugins/prompt-sections.ts`：persona / 技能索引 / L2 摘要注入（`ctx.systemPrompt.section`）
+- [x] T3.6 两轮技能选择：Round1 索引 → `[SKILLS: ...]` → Round2 正文注入
+- [x] T3.7 `knowledge/` 与 `skills/` 示例内容（退款政策、问候、订单查询）
+- [x] T3.8 单测 + `tests/e2e/knowledge.test.ts`
 - **验收**：改一个 .md 文件，热重载后新答案立即生效；技能命中记录进 lineage
 
 ## P4 · CRM 与记忆
@@ -164,3 +164,13 @@
   「先入 per-conversation 待取队列，再推在线订阅者」，两种形态都成立
 - HTTP 响应区分 `reply`（对客户说的话，来自 `channel.reply`）与
   `agent_narration`（模型内部叙述）——两者混为一谈会让接入方把内部推理发给客户
+
+### P3
+- **dsh-skill-filesystem 只识别 frontmatter 的 `name`/`description`/`whenToUse`/`metadata`
+  与两个 invocation 开关，其余顶层键一律忽略**。OpenCS 的 priority/routing/intent_signals
+  必须嵌在 `metadata:` 之下（那是 dsh 给下游的开放扩展点）。已写回 skills/RESEARCH.md
+- `includeDefaultRoots: false` 是必须的——默认会扫 `$DSH_HOME/skills` 与 `~/.agents`，
+  那是**开发者机器上的个人技能**，绝不能混进服务端话术库。已加隔离测试守住
+- `PromptSection.text` 必须是**同步**的（`string | (ctx) => string`），
+  而技能加载是异步的 → repo 维护一个同步索引快照，启动与 `skills/change` 后预热
+- chokidar 的 `watch()` 必须等到 `ready` 再返回，否则紧随其后的变更被静默丢弃

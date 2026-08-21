@@ -18,14 +18,18 @@ import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
+import * as SkillFilesystem from '@deepseek-ai/dsh-skill-filesystem'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 
 import type { RuntimeConfig } from '../config.js'
+import { DshSkillRepo } from '../skills/repo.js'
 import { MOCK_MODEL, MOCK_PROVIDER, apply as applyMockLlm, inject as mockInject } from './mock-llm.js'
 import * as GuardRisk from './plugins/guard-risk.js'
 import type { RiskDecisionEntry } from './plugins/guard-risk.js'
 import * as GuardScope from './plugins/guard-scope.js'
+import * as PromptSections from './plugins/prompt-sections.js'
 import * as ToolsCs from './plugins/tools-cs.js'
 import type { HarnessPorts } from './ports.js'
 import { bindScope, type TenantScope } from './session-scope.js'
@@ -52,6 +56,8 @@ export interface Harness {
   /** 实际生效的 provider/model（无 key 时是 mock）。 */
   readonly provider: string
   readonly model: string
+  /** 技能库。管理端与 Round 2 注入使用。 */
+  readonly skills: DshSkillRepo
   /**
    * 取得某会话的常驻 agent；不存在则创建并绑定作用域。
    *
@@ -110,6 +116,24 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
   mkdirSync(config.paths.sessionsDir, { recursive: true })
   await mount(JsonlSessionPersistence, { root: config.paths.sessionsDir })
 
+  // 技能库：复用 dsh 的 skill 注册表 + 文件系统 provider。
+  // includeDefaultRoots: false 是**必须的**——默认会扫描 $DSH_HOME/skills 与 ~/.agents，
+  // 那是开发者机器上的个人技能，绝不能混进服务端的客服话术库。
+  await mount(SkillRegistry, {})
+  await mount({ name: SkillFilesystem.name, inject: SkillFilesystem.inject, apply: SkillFilesystem.apply }, {
+    providerName: 'opencs',
+    includeDefaultRoots: false,
+    customSkillDirs: [config.paths.skillsDir],
+  })
+  const skills = new DshSkillRepo(ctx)
+  await skills.refresh()
+
+  // persona 与技能索引经 systemPrompt.section 注入（model-visible ⟺ logged）
+  await mount({ name: PromptSections.name, inject: PromptSections.inject, apply: PromptSections.apply }, {
+    persona: BASE_PERSONA,
+    skills,
+  } satisfies PromptSections.PromptSectionsConfig)
+
   // 业务工具
   await mount({ name: ToolsCs.name, inject: ToolsCs.inject, apply: ToolsCs.apply }, ports)
 
@@ -127,6 +151,7 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
     ctx,
     provider,
     model,
+    skills,
 
     async agentFor(scope: TenantScope): Promise<Agent> {
       const existing = agents.get(scope.conversationId)
@@ -141,7 +166,6 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
         meta: { cwd: process.cwd() },
         agentOptions: { provider, model },
       })
-      // 每个 agent 一份 persona；section 机制保证它被记入 session 事件（model-visible ⟺ logged）
       agents.set(scope.conversationId, handle.agent)
       return handle.agent
     },
@@ -155,6 +179,7 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
       for (const unbind of unbinders.reverse()) unbind()
       unbinders.length = 0
       agents.clear()
+      skills.dispose()
       // 逆序卸载：先业务插件后基础服务，让 guard/工具先于 ToolRuntime 消失
       for (const fiber of [...fibers].reverse()) await fiber.dispose()
       fibers.length = 0
