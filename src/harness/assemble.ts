@@ -24,12 +24,14 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 
 import type { RuntimeConfig } from '../config.js'
+import type { ContactService } from '../crm/service.js'
 import { DshSkillRepo } from '../skills/repo.js'
 import { MOCK_MODEL, MOCK_PROVIDER, apply as applyMockLlm, inject as mockInject } from './mock-llm.js'
 import * as GuardRisk from './plugins/guard-risk.js'
 import type { RiskDecisionEntry } from './plugins/guard-risk.js'
 import * as GuardScope from './plugins/guard-scope.js'
 import * as PromptSections from './plugins/prompt-sections.js'
+import * as ToolsCrm from './plugins/tools-crm.js'
 import * as ToolsCs from './plugins/tools-cs.js'
 import type { HarnessPorts } from './ports.js'
 import { bindScope, type TenantScope } from './session-scope.js'
@@ -47,6 +49,8 @@ export const BASE_PERSONA = [
 export interface HarnessOptions {
   readonly config: RuntimeConfig
   readonly ports: HarnessPorts
+  /** 联系人服务。省略则不挂 CRM 工具（P1/P3 的纯客服形态）。 */
+  readonly contacts?: ContactService
   /** 风险裁决审计回调；P7 接到 audit 表。 */
   readonly onRiskDecision?: (entry: RiskDecisionEntry) => void
 }
@@ -136,6 +140,9 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
 
   // 业务工具
   await mount({ name: ToolsCs.name, inject: ToolsCs.inject, apply: ToolsCs.apply }, ports)
+  if (options.contacts !== undefined) {
+    await mount({ name: ToolsCrm.name, inject: ToolsCrm.inject, apply: ToolsCrm.apply }, options.contacts)
+  }
 
   // guard 链：scope 在前（权限事实），risk 在后（风险偏好）
   await mount({ name: GuardScope.name, inject: GuardScope.inject, apply: GuardScope.apply })
@@ -154,12 +161,13 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
     skills,
 
     async agentFor(scope: TenantScope): Promise<Agent> {
+      const sessionId = SessionId(`conv-${scope.tenantId}-${scope.conversationId}`)
+      // **每次**都重新绑定，不只是首次创建时：contactId 是在首轮入站时才解析出来的，
+      // 只在创建时绑定会让整个会话的 CRM 工具都看不到客户档案。
+      unbinders.push(bindScope(String(sessionId), scope))
+
       const existing = agents.get(scope.conversationId)
       if (existing !== undefined) return existing
-
-      const sessionId = SessionId(`conv-${scope.tenantId}-${scope.conversationId}`)
-      // 必须在第一个 turn 之前绑定：工具与 guard 都从这里反查权限事实
-      unbinders.push(bindScope(String(sessionId), scope))
 
       const handle = await ctx.agents.create({
         sessionId,

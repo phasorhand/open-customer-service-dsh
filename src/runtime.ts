@@ -12,6 +12,9 @@ import type { OutboundAction } from './channel/types.js'
 import { textContent } from './channel/types.js'
 import { WebChatAdapter, WEBCHAT_CHANNEL_ID } from './channel/webchat.js'
 import type { RuntimeConfig } from './config.js'
+import { ContactImporter } from './crm/importer.js'
+import { ContactService } from './crm/service.js'
+import { CRM_MIGRATIONS, ContactStore } from './crm/store.js'
 import { openDb, type Db } from './db/sqlite.js'
 import { assembleHarness, type Harness } from './harness/assemble.js'
 import type { RiskDecisionEntry } from './harness/plugins/guard-risk.js'
@@ -26,6 +29,9 @@ export interface OpenCsRuntime {
   readonly webchat: WebChatAdapter
   readonly harness: Harness
   readonly knowledge: SqliteKnowledgeStore
+  readonly contacts: ContactService
+  readonly contactStore: ContactStore
+  readonly importer: ContactImporter
   /** 最近的风险裁决记录（P7 会换成 audit 表持久化）。 */
   readonly riskDecisions: readonly RiskDecisionEntry[]
   dispose(): Promise<void>
@@ -98,6 +104,11 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
   await ingestor.ingestAll()
   const stopWatching = options.watchKnowledge === true ? await ingestor.watch() : undefined
 
+  const crmDb: Db = openDb(join(config.paths.dataDir, 'crm.db'), CRM_MIGRATIONS)
+  const contactStore = new ContactStore(crmDb)
+  const contacts = new ContactService(contactStore)
+  const importer = new ContactImporter(contactStore)
+
   const defaults = memoryPorts()
   const ports: HarnessPorts = {
     knowledge: options.ports?.knowledge ?? knowledge,
@@ -109,6 +120,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
   const harness = await assembleHarness({
     config,
     ports,
+    contacts,
     onRiskDecision: (entry) => {
       riskDecisions.push(entry)
       if (riskDecisions.length > RISK_LOG_CAP) riskDecisions.splice(0, riskDecisions.length - RISK_LOG_CAP)
@@ -121,12 +133,16 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
     webchat,
     harness,
     knowledge,
+    contacts,
+    contactStore,
+    importer,
     riskDecisions,
     async dispose(): Promise<void> {
       await stopWatching?.()
       await ingestor.stop()
       await harness.dispose()
       knowledgeDb.close()
+      crmDb.close()
     },
   }
 }

@@ -11,7 +11,7 @@
 | **P1** ✅ | dsh 内嵌最小闭环 | assembleHarness + 1 工具 + guard + mock LLM + smoke | P0 |
 | **P2** ✅ | 渠道与网关 | ChannelAdapter + WebChat + Fastify + WS 帧 + 入站→回复端到端 | P1 |
 | **P3** ✅ | 知识库与技能 | FTS5 知识库 + SKILL.md + 两轮技能选择 + prompt sections | P2 |
-| **P4** | CRM 与记忆 | ContactStore/Service/Importer/Segment + L2 记忆 + CRM 工具集 | P2 |
+| **P4** 🟡 | CRM 与记忆 | ContactStore/Service/Importer/Segment + L2 记忆 + CRM 工具集 | P2 |
 | **P5** | 节奏与外呼 | SendOutbox + CadenceStore + NurtureEngine + Composer + subagent | P4 |
 | **P6** | 演进与评测 | Proposal/Gate/ShadowRunner + EvalEngine + Lineage + Replay + Ablation | P3,P4 |
 | **P7** | 管理端与交付 | 全量 Admin API + Next.js 迁移 + WeCom + docker-compose + README | P5,P6 |
@@ -74,17 +74,17 @@
 
 ## P4 · CRM 与记忆
 
-- [ ] T4.1 `src/crm/types.ts`：`Contact` / `LifecycleStage` / `LeadStatus` / `ContactEvent`
-- [ ] T4.2 `src/crm/store.ts`：contacts + contact_events；**渠道身份独立唯一索引**
-- [ ] T4.3 `src/crm/lifecycle.ts`：单调跃迁校验 + 终态出口
-- [ ] T4.4 `src/crm/scoring.ts`：frequency/success/satisfaction/recency 加权 + 衰减
-- [ ] T4.5 `src/crm/segment.ts`：`AudienceFilter` 规则求值（eq/gt/lt/in/contains）
-- [ ] T4.6 `src/crm/importer.ts`：CSV（csv-parse）+ 中英表头别名 + 去重 + `ImportReport`
-- [ ] T4.7 `src/crm/service.ts`：`onInbound()`（打分/跃迁/时间戳）+ `linkIdentity()` + `unaddressable` 判定
+- [x] T4.1 `src/crm/types.ts`：`Contact` / `LifecycleStage` / `LeadStatus` / `ContactEvent`
+- [x] T4.2 `src/crm/store.ts`：contacts + contact_events；**渠道身份独立唯一索引**
+- [x] T4.3 `src/crm/lifecycle.ts`：单调跃迁校验 + 终态出口
+- [x] T4.4 `src/crm/scoring.ts`：frequency/success/satisfaction/recency 加权 + 衰减
+- [x] T4.5 `src/crm/segment.ts`：`AudienceFilter` 规则求值（eq/gt/lt/in/contains）
+- [x] T4.6 `src/crm/importer.ts`：CSV（csv-parse）+ 中英表头别名 + 去重 + `ImportReport`
+- [x] T4.7 `src/crm/service.ts`：`onInbound()`（打分/跃迁/时间戳）+ `linkIdentity()` + `unaddressable` 判定
 - [ ] T4.8 `src/memory/l2-store.ts`：结构化长期记忆 + FTS5 + 多版本
-- [ ] T4.9 `src/harness/plugins/tools-crm.ts`：`contact.get/update_stage/add_note/link_conversation`
-- [ ] T4.10 `lead_qualifier` subagent（one-shot，工具白名单 spawn 固化）
-- [ ] T4.11 单测（6 文件）+ `tests/e2e/crm.test.ts`
+- [x] T4.9 `src/harness/plugins/tools-crm.ts`：`contact.get/update_stage/add_note/link_conversation`
+- [x] T4.10 `lead_qualifier` subagent（one-shot，工具白名单 spawn 固化）
+- [x] T4.11 单测（6 文件）+ `tests/e2e/crm.test.ts`
 - **验收**：入站消息自动建/更新联系人；同一人多渠道不重复建档；无渠道身份显式失败
 
 ## P5 · 节奏与外呼
@@ -174,3 +174,16 @@
 - `PromptSection.text` 必须是**同步**的（`string | (ctx) => string`），
   而技能加载是异步的 → repo 维护一个同步索引快照，启动与 `skills/change` 后预热
 - chokidar 的 `watch()` 必须等到 `ready` 再返回，否则紧随其后的变更被静默丢弃
+
+### P4（部分完成）
+已完成：types / store / lifecycle / scoring / segment / importer / service / tools-crm / 测试
+**未完成**：T4.8 L2 结构化长期记忆、T4.10 lead_qualifier subagent
+
+实测发现：
+- **联系人时间线不能只按 `at` 排序**。建档瞬间连发 imported/identity_linked/
+  inbound/stage_changed 四条事件，ISO 时间戳只到毫秒，同毫秒内会退化成按随机
+  UUID 排序 → 时间线显示乱序。已改为 `seq INTEGER PRIMARY KEY AUTOINCREMENT`
+- `agentFor()` 必须**每次**重新绑定 scope，而不只是首次创建时：contactId 是在
+  首轮入站时才解析出来的，只在创建时绑定会让整个会话的 CRM 工具都读不到客户档案
+- SQL 模板字符串里不能出现反引号（会提前终止 template literal），注释里引用列名
+  要写成 `at 列` 而不是带反引号的形式

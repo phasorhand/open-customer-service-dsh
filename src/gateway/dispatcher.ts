@@ -45,16 +45,36 @@ export class InboundDispatcher {
   }
 
   private async runOne(message: InboundMessage): Promise<DispatchResult> {
+    // 先落 CRM：识别/建档、推进阶段、重新打分。这一步在 agent 之前完成，
+    // 因为 contactId 要作为权限事实注入 scope，供 CRM 工具反查。
+    const contact = this.resolveContact(message)
+
     const scope: TenantScope = {
       tenantId: message.tenantId,
       conversationId: message.conversationId,
       channelId: message.channelId,
       customerId: message.customerId,
+      ...(contact === undefined ? {} : { contactId: contact.id }),
     }
     const agent = await this.runtime.harness.agentFor(scope)
     const fromSeq = lastSeq(agent) + 1
     await this.runtime.harness.runTurn(agent, textOf(message.content))
     return { conversationId: message.conversationId, fromSeq, toSeq: lastSeq(agent) }
+  }
+
+  private resolveContact(message: InboundMessage): { readonly id: string } | undefined {
+    try {
+      return this.runtime.contacts.onInbound(message)
+    } catch (error) {
+      // CRM 识别失败不阻断客服回复：客户仍应得到答复，只是这轮没有画像
+      this.onContactError(message, error)
+      return undefined
+    }
+  }
+
+  /** CRM 识别失败的处理钩子。默认静默；P7 接到审计日志。 */
+  private onContactError(_message: InboundMessage, _error: unknown): void {
+    // 有意为空：失败已由 resolveContact 降级处理，此处只是扩展点
   }
 }
 
