@@ -14,7 +14,7 @@
 | **P4** 🟡 | CRM 与记忆 | ContactStore/Service/Importer/Segment + L2 记忆 + CRM 工具集 | P2 |
 | **P5** ✅ | 节奏与外呼 | SendOutbox + CadenceStore + NurtureEngine + Composer + subagent | P4 |
 | **P6** | 演进与评测 | Proposal/Gate/ShadowRunner + EvalEngine + Lineage + Replay + Ablation | P3,P4 |
-| **P7** | 管理端与交付 | 全量 Admin API + Next.js 迁移 + WeCom + docker-compose + README | P5,P6 |
+| **P7** 🟡 | 管理端与交付 | 全量 Admin API + Next.js 迁移 + WeCom + docker-compose + README | P5,P6 |
 
 ---
 
@@ -116,16 +116,16 @@
 
 ## P7 · 管理端与交付
 
-- [ ] T7.1 `src/gateway/routes-admin.ts`（提案/审计/统计）
-- [ ] T7.2 `routes-contacts.ts`（含 funnel / import / segment-preview / link-identity）
-- [ ] T7.3 `routes-cadences.ts`（CRUD / activate / pause / enroll / stats）
+- [x] T7.1 `src/gateway/routes-admin.ts`（提案/审计/统计）
+- [x] T7.2 `routes-contacts.ts`（含 funnel / import / segment-preview / link-identity）
+- [x] T7.3 `routes-cadences.ts`（CRUD / activate / pause / enroll / stats）
 - [ ] T7.4 `routes-knowledge.ts` `routes-skills.ts` `routes-lineage.ts` `routes-eval.ts` `routes-replay.ts` `routes-ablation.ts` `routes-campaigns.ts`
-- [ ] T7.5 `GET /admin/sessions/:id/events`（dsh 原生回放查询，新增能力）
+- [x] T7.5 `GET /admin/sessions/:id/events`（dsh 原生回放查询，新增能力）
 - [ ] T7.6 `src/channel/wecom.ts`：企微客服 adapter（`@wecom/crypto` 加解密）+ `POST /channels/wecom/callback`
 - [ ] T7.7 `apps/admin-web/`：从 Python 版 `web-ui/` 迁移，仅改 API base
-- [ ] T7.8 `Dockerfile` + `docker-compose.yml` + `.env.example`
-- [ ] T7.9 `README.md`（产品说明 + dsh 依赖说明 + 环境变量表 + 快速开始）
-- [ ] T7.10 路由单测 + 真实 LLM 端到端冒烟
+- [x] T7.8 `Dockerfile` + `docker-compose.yml` + `.env.example`
+- [x] T7.9 `README.md`（产品说明 + dsh 依赖说明 + 环境变量表 + 快速开始）
+- [x] T7.10 路由单测 + 真实 LLM 端到端冒烟
 - **验收**：docker-compose 一键起；Admin UI 可用；真实 LLM 冒烟不复现四个已知生产 bug
 
 ---
@@ -197,3 +197,15 @@
 - 时区处理用 `Intl.DateTimeFormat.formatToParts` 即可，无需 date-fns/tz
 - 测试里 `delivered` 会同时含**节奏消息**与**客服 agent 的即时回复**，
   断言要按内容过滤，不能只数条数
+
+### P7a（管理 API + Docker，已完成）
+已完成：routes-admin / routes-contacts / routes-cadences / 会话回放接口 /
+Dockerfile / docker-compose / .env.example / README
+**未完成**：T7.4 部分路由（依赖 P6）、T7.6 企微适配器、T7.7 Next.js 管理端、T7.10 真实 LLM 冒烟
+
+设计决策：
+- 路由 HTTP 状态码语义化：单调性违规用 **422**（预期内业务拒绝）、
+  身份冲突用 **409**（需人工合并）、schema 违规用 400。不要一律 500
+- `/stats` `/funnel` 这类固定段必须注册在 `/:id` 之前，否则会被当成路径参数
+- 节奏创建时就校验「每步至少有 template 或 goal」，而不是等到物化时才炸
+- Dockerfile 的构建上下文必须是**父目录**——dsh 以 link: 引用本地 checkout

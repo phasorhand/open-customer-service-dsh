@@ -1,0 +1,35 @@
+# 本地一键起。构建上下文是父目录，因为 dsh 以 link: 引用本地 checkout。
+services:
+  opencs:
+    build:
+      context: ..
+      dockerfile: open-customer-service-dsh/Dockerfile
+    ports:
+      - '8080:8080'
+    environment:
+      OPENCS_ENV: production
+      # 生产必填：≥32 字节。示例值仅供本地试跑，部署前务必更换。
+      OPENCS_ACTION_TOKEN_SECRET: ${OPENCS_ACTION_TOKEN_SECRET:?请设置一个 ≥32 字节的密钥}
+      # 生产环境不允许降级为 mock 模型，必须配置其一
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENCS_MODEL: ${OPENCS_MODEL:-deepseek-chat}
+      # 默认只自动放行 0-3 档；channel.reply（ORANGE_C）需人工确认。
+      # 要让 agent 自动回复客户，显式改成 0,1,2,3,4 —— 这是运营决策，不是默认值。
+      OPENCS_AUTO_APPROVE_TIERS: ${OPENCS_AUTO_APPROVE_TIERS:-0,1,2,3}
+      OPENCS_NURTURE_ENABLED: ${OPENCS_NURTURE_ENABLED:-true}
+      OPENCS_NURTURE_DRAIN_CONCURRENCY: ${OPENCS_NURTURE_DRAIN_CONCURRENCY:-8}
+      OPENCS_NURTURE_LEASE_SECONDS: ${OPENCS_NURTURE_LEASE_SECONDS:-300}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+    volumes:
+      - opencs-data:/data
+      # 知识库与技能库挂出来，运营改 .md 即时生效，不用重建镜像
+      - ./knowledge:/workspace/app/knowledge:ro
+      - ./skills:/workspace/app/skills:ro
+    restart: unless-stopped
+
+volumes:
+  opencs-data:

@@ -5,8 +5,10 @@
 这是 [`open-customer-service`](../open-customer-service)（Python / FastAPI）的完全重写版：
 Agent 运行时不再自建，转由 dsh 承担；OpenCS 只保留 dsh 不提供的 CS/CRM 业务语义。
 
-> ⚠️ 开发中。当前进度：**P0 骨架 / P1 dsh 内嵌闭环 / P2 渠道与网关** 已完成，
-> 后续见 `docs/superpowers/plans/2026-08-21-rewrite-master-plan.md`。
+> ⚠️ 开发中。**P0 骨架 / P1 dsh 内嵌闭环 / P2 渠道网关 / P3 知识库与技能 /
+> P4 CRM / P5 节奏引擎 / P7a 管理 API 与 Docker** 已完成（380 tests）。
+> 待办：P6 演进与评测、P7b 企微适配器与 Next.js 管理端。
+> 进度见 `docs/superpowers/plans/2026-08-21-rewrite-master-plan.md`。
 
 ---
 
@@ -70,7 +72,7 @@ pnpm dev            # 起服务 → http://localhost:8080
 未配置 LLM API key 时自动降级为**确定性 mock 模型**——完整走 agent loop、
 guard、工具执行与 session 持久化，只是 token 由规则生成。CI 无 key 也能全绿。
 
-### 试一下
+### 试一下：客服问答
 
 ```bash
 curl -X POST localhost:8080/channels/webchat \
@@ -93,7 +95,58 @@ WebSocket：`ws://localhost:8080/ws/conversations/:id?customer_id=u1`
 连接时先收到 `{type:"history",frames:[...]}`，之后实时收帧。
 **重连收到的历史与当时实时收到的逐帧一致**——两者共用同一个纯投影函数。
 
+### 试一下：全自动外呼成单
+
+```bash
+B=localhost:8080
+
+# 1. 导入名单（external_id 用于关联渠道身份；没有它的人算「不可触达」）
+curl -X POST $B/admin/tenants/default/contacts/import -H 'content-type: application/json' \
+  -d '{"csv":"email,name,external_id\nzhang@x.com,张三,u-zhang\n","channel_id":"webchat"}'
+
+# 2. 预览受众
+curl -X POST $B/admin/tenants/default/contacts/segment-preview -H 'content-type: application/json' \
+  -d '{"rules":[{"field":"addressable","operator":"eq","value":true}]}'
+
+# 3. 建节奏并激活
+curl -X POST $B/admin/tenants/default/cadences -H 'content-type: application/json' -d '{
+  "name":"首触","channel_id":"webchat","sender_persona":"OpenCS 的小林",
+  "auto_enroll":true,
+  "entry_filter":{"rules":[{"field":"addressable","operator":"eq","value":true}]},
+  "steps":[{"step_order":0,"delay_seconds":0,"template":"{{name}}你好，我是小林。"}]
+}'
+curl -X POST $B/admin/tenants/default/cadences/<id>/activate
+
+# 4. 看统计（引擎每 60 秒自动 tick；也可手动触发）
+curl -X POST $B/admin/tenants/default/cadences/tick
+curl $B/admin/tenants/default/cadences/stats
+```
+
+**节奏步骤两种模式**，创建时 API 会标注出来：
+
+| 模式 | 触发条件 | 耗时 | 用在哪 |
+|---|---|---|---|
+| `template` | 填了 `template` | 毫秒级 | **大批量首触必须用这个**（5000 人 × LLM = 55 小时） |
+| `llm` | 只填 `goal` | ~40 秒/条 | 高价值跟进步骤 |
+
+**不打扰规则**：静默时段（默认 22:00–09:00，IANA 时区）、周频控（默认 3 次）、
+客户一回复即退出节奏、到达 `exit_on_stage` 即退出。
+
 ---
+
+## Docker 部署
+
+因为 dsh 以 `link:` 引用本地 checkout，**构建上下文是两个仓库的共同父目录**：
+
+```bash
+cd ..   # 到 deepseek-harness 与 open-customer-service-dsh 的父目录
+OPENCS_ACTION_TOKEN_SECRET=$(openssl rand -hex 32) \
+DEEPSEEK_API_KEY=sk-xxx \
+docker compose -f open-customer-service-dsh/docker-compose.yml up --build
+```
+
+`knowledge/` 与 `skills/` 以只读卷挂入——运营改 `.md` 即时生效，无需重建镜像。
+运行期数据在 `/data` 卷里，容器重建不丢联系人与会话。
 
 ## 架构
 
@@ -180,9 +233,18 @@ apps/admin-web (Next.js，P7)
 | 端到端 | `tests/e2e/` | 真实 Fastify + 真实 runtime 对象图 |
 
 ```bash
-pnpm test        # 150 tests
+pnpm test        # 380 tests
 pnpm smoke       # 离线全链路冒烟
 ```
+
+### 四个 Python 版生产 bug 的回归防线
+
+| 教训 | 修复 | 守住它的测试 |
+|---|---|---|
+| #1 LLM 自称是客户的公司 | system + user prompt 双层身份边界 | `tests/unit/nurture.test.ts` · `tests/e2e/lead-to-close.test.ts` |
+| #2 租约超时导致重复发送 | 唯一约束 + 租约 + **并发 drain** | `tests/unit/nurture.test.ts` · `tests/e2e/lead-to-close.test.ts` |
+| #3 按手机号建重复联系人 | 身份三分，渠道身份优先查找 | `tests/e2e/crm.test.ts` |
+| #4 无渠道身份被静默丢弃 | `unaddressable` 显式抛错 + 记时间线 | `tests/unit/crm.test.ts` · `tests/e2e/crm.test.ts` |
 
 ---
 
