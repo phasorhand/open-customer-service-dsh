@@ -2,6 +2,8 @@
 
 自托管的 AI 客服 / 增长 Agent，**基于 [DeepSeek Harness (dsh)](https://github.com/deepseek-harness) 内嵌构建**。
 
+**产品主站：http://dipingxian.tech/open-customer-service-dsh/**
+
 > 导入名单 → 自动节奏触达 → 客户一回复即停。
 > Agent 的**每个动作**都过风险分级，自由回复默认进审批队列——**批准的就是发出的**，全程审计可回放。
 > Agent 从低分对话里自提改进，但改行为准则永远要人点头。
