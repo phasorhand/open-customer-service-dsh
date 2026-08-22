@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenCS —— 自托管 AI 客服 + 增长引擎</title>
+<meta name="description" content="自托管 AI 客服与增长 Agent：导入名单自动触达、每个动作过风险分级、自由回复默认人工审批、全程审计可回放。业务数据全在你自己的机器上，不按坐席收费。">
+<style>
+  :root { --accent:#2563eb; --text:#111827; --muted:#6b7280; --line:#e5e7eb; --bg:#f8fafc; --card:#ffffff; }
+  * { box-sizing:border-box; margin:0; }
+  body { font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; color:var(--text); background:var(--bg); }
+  a { color:var(--accent); text-decoration:none; }
+  .wrap { max-width:1000px; margin:0 auto; padding:0 24px; }
+  header { background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; }
+  header .wrap { display:flex; align-items:center; justify-content:space-between; padding:14px 24px; }
+  header b { font-size:18px; }
+  header nav a { margin-left:20px; color:var(--muted); font-size:14px; }
+  .hero { padding:72px 0 56px; text-align:center; }
+  .hero h1 { font-size:40px; line-height:1.25; letter-spacing:-.5px; }
+  .hero h1 span { color:var(--accent); }
+  .hero p.sub { margin:20px auto 0; max-width:720px; color:var(--muted); font-size:18px; }
+  .cta { margin-top:32px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+  .btn { display:inline-block; padding:12px 26px; border-radius:10px; font-weight:600; }
+  .btn.primary { background:var(--accent); color:#fff; }
+  .btn.ghost { border:1px solid var(--line); background:var(--card); color:var(--text); }
+  .chain { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:36px; font-size:14px; }
+  .chain span { background:var(--card); border:1px solid var(--line); border-radius:999px; padding:6px 14px; }
+  .chain em { align-self:center; color:var(--muted); font-style:normal; }
+  section { padding:56px 0; }
+  section.alt { background:var(--card); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+  h2 { font-size:28px; text-align:center; margin-bottom:8px; }
+  .lead { text-align:center; color:var(--muted); margin-bottom:36px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .alt .card { background:var(--bg); }
+  .card h3 { font-size:17px; margin-bottom:8px; }
+  .card p { color:var(--muted); font-size:14.5px; }
+  .shots { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; }
+  .shots figure { margin:0; }
+  .shots img { width:100%; border:1px solid var(--line); border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,.06); }
+  .shots figcaption { text-align:center; color:var(--muted); font-size:13.5px; margin-top:10px; }
+  .rules { max-width:760px; margin:0 auto; counter-reset:rule; }
+  .rules .card { display:flex; gap:18px; margin-bottom:14px; align-items:flex-start; }
+  .rules .card::before { counter-increment:rule; content:counter(rule); flex:none; width:34px; height:34px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; }
+  pre { background:#0f172a; color:#e2e8f0; border-radius:12px; padding:20px 24px; overflow:auto; font-size:14px; line-height:1.6; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; font-size:14.5px; }
+  th,td { padding:10px 14px; border-bottom:1px solid var(--line); text-align:left; }
+  th { background:var(--bg); color:var(--muted); font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  .tag { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12.5px; font-weight:600; }
+  .tag.ok { background:#ecfdf5; color:#059669; }
+  .tag.warn { background:#fff7ed; color:#d97706; }
+  .tag.bad { background:#fef2f2; color:#dc2626; }
+  footer { padding:44px 0 60px; text-align:center; color:var(--muted); font-size:14px; }
+  footer a { margin:0 10px; }
+  @media (max-width:640px){ .hero h1{font-size:30px} header nav a{margin-left:12px} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <b>OpenCS</b>
+    <nav>
+      <a href="#features">功能</a>
+      <a href="#safety">安全</a>
+      <a href="#start">快速开始</a>
+      <a href="#docs">材料</a>
+      <a href="https://github.com/phasorhand/open-customer-service-dsh">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero wrap">
+  <h1>自托管 AI 客服 + 增长引擎<br><span>默认安全，数据在你手里</span></h1>
+  <p class="sub">导入名单自动触达、客户一回复即停；Agent 的每个动作都过风险分级，
+  自由回复默认进人工审批——<b>批准的就是发出的</b>，全程审计可回放。
+  不按坐席收费，放开自动化是你的决策，而不是我们的默认值。</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/phasorhand/open-customer-service-dsh">GitHub 仓库</a>
+    <a class="btn ghost" href="https://github.com/phasorhand/open-customer-service-dsh/blob/main/docs/sales/demo-script.md">15 分钟演示脚本</a>
+  </div>
+  <div class="chain">
+    <span>导入名单</span><em>→</em><span>节奏自动触达</span><em>→</em><span>客户回复即停</span><em>→</em>
+    <span>动作风险分级</span><em>→</em><span>高风险人工审批</span><em>→</em><span>审计可回放</span><em>→</em><span>自提改进·人工门禁</span>
+  </div>
+</div>
+
+<section class="alt" id="shots">
+  <div class="wrap">
+    <h2>眼见为实</h2>
+    <p class="lead">管理控制台随服务分发，单文件零构建——总览 / 联系人 / 节奏 / 审批 / 演进提案 / 审计 / 对话测试</p>
+    <div class="shots">
+      <figure>
+        <img src="assets/console-approvals.png" alt="审批队列截图" loading="lazy">
+        <figcaption>审批队列：待发原文可见，批准的就是发出的，AI 无法再改一个字</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/console-overview.png" alt="控制台总览截图" loading="lazy">
+        <figcaption>总览：联系人漏斗、待审批、触达统计一屏尽收</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/console-contacts.png" alt="联系人截图" loading="lazy">
+        <figcaption>联系人：CSV 导入即用，无渠道身份显式标注，不假装发送</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/console-audit.png" alt="审计日志截图" loading="lazy">
+        <figcaption>审计：每个工具动作的裁决与原因持久化，重启不丢</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>核心能力</h2>
+    <p class="lead">客服接得住，增长跑得动，全程管得住</p>
+    <div class="grid">
+      <div class="card"><h3>多渠道客服</h3><p>网页聊天（HTTP + WebSocket 实时流）与企业微信客服（签名校验 + 加解密），重连历史与实时逐帧一致。</p></div>
+      <div class="card"><h3>Markdown 即知识库</h3><p>FTS5 全文检索，运营改文件保存即生效，答案标注来源，不需要「训练」。</p></div>
+      <div class="card"><h3>CRM 漏斗</h3><p>CSV 导入、渠道身份关联防重复建档、生命周期阶段、意向评分、规则分群。</p></div>
+      <div class="card"><h3>节奏外呼</h3><p>模板批量首触毫秒级零模型成本，LLM 个性化跟进；静默时段 / 周频控 / 客户一回复即退出。</p></div>
+      <div class="card"><h3>HITL 审批闭环</h3><p>自由回复默认进队列，运营看到的是将发送的原文，批准后系统确定性投递。</p></div>
+      <div class="card"><h3>闭环学习</h3><p>每轮回复零成本自动评测，低分沉淀证据，Agent 自提改进提案，改行为准则永远要人点头。</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="safety">
+  <div class="wrap">
+    <h2>三条安全纪律</h2>
+    <p class="lead">写进架构，不是宣传语——每一条都有自动化测试守护（472 项）</p>
+    <div class="rules">
+      <div class="card"><div><h3>LLM 永不直接执行不可逆动作</h3><p>发消息、改生命周期、写标签全部经工具层收口，guard 链做租户隔离 + 风险分级 + 频控。未登记的新工具默认收紧而非放行。</p></div></div>
+      <div class="card"><div><h3>批准的就是发出的</h3><p>审批通过的原文由系统确定性投递，不再经过模型——不存在「审批之后 AI 又改了措辞」。</p></div></div>
+      <div class="card"><div><h3>Model-visible ⟺ logged</h3><p>进过模型的内容都能从会话日志重建，回放不是「大概如此」而是逐帧一致。</p></div></div>
+    </div>
+    <div style="max-width:760px;margin:36px auto 0">
+      <table>
+        <tr><th>风险档</th><th>默认策略</th><th>典型动作</th></tr>
+        <tr><td><span class="tag ok">GREEN / YELLOW</span></td><td>放行</td><td>查知识库、读订单、加备注</td></tr>
+        <tr><td><span class="tag warn">ORANGE A/B</span></td><td>放行（频控 + 审计）</td><td>发模板消息、节奏投递</td></tr>
+        <tr><td><span class="tag bad">ORANGE_C / RED</span></td><td><b>人工确认</b></td><td>自由文本回复、改生命周期、标记成单</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="sovereignty">
+  <div class="wrap">
+    <h2>数据主权</h2>
+    <p class="lead">自托管软件：无回传通道、无遥测。唯一出境路径是模型调用，且可以掐断</p>
+    <div class="grid">
+      <div class="card"><h3>业务数据 100% 本地</h3><p>联系人、会话、审计、知识库全部是你服务器上的 SQLite 文件，备份就是拷文件（附一致性备份脚本）。</p></div>
+      <div class="card"><h3>模型三选一</h3><p>DeepSeek 官方 API（性价比）/ 任意 OpenAI 兼容端点 / 自建 vLLM·Ollama——最后一种全量数据不出机房。</p></div>
+      <div class="card"><h3>生产 fail-fast</h3><p>缺少安全配置或将降级为 mock 模型时，进程直接拒绝启动，不静默运行。</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="start">
+  <div class="wrap">
+    <h2>快速开始</h2>
+    <p class="lead">无需任何 API key 即可离线跑通全链路（内置确定性 mock 模型）</p>
+    <pre><code># 准备框架依赖（clone 公开仓库 + 锁定 commit + 构建）
+git clone https://github.com/phasorhand/open-customer-service-dsh.git
+cd open-customer-service-dsh &amp;&amp; bash scripts/setup-dsh.sh
+
+pnpm install
+pnpm smoke        # 离线冒烟：全链路验证
+pnpm dev          # http://localhost:8080/console
+
+# 问它一句
+curl -X POST localhost:8080/channels/webchat -H 'content-type: application/json' \
+  -d '{"conversation_id":"c1","customer_id":"u1","text":"买的东西想退款，还来得及吗"}'</code></pre>
+  </div>
+</section>
+
+<section id="docs">
+  <div class="wrap">
+    <h2>材料齐全</h2>
+    <p class="lead">从第一次演示到交付验收，每个环节都有现成文档</p>
+    <div class="grid">
+      <div class="card"><h3><a href="https://github.com/phasorhand/open-customer-service-dsh/blob/main/docs/sales/one-pager.md">产品一页纸</a></h3><p>给决策人：痛点对照、核心能力、适用画像。</p></div>
+      <div class="card"><h3><a href="https://github.com/phasorhand/open-customer-service-dsh/blob/main/docs/sales/security-whitepaper.md">安全与数据主权说明</a></h3><p>给安全团队：数据流、访问控制、门禁、已知边界如实列出。</p></div>
+      <div class="card"><h3><a href="https://github.com/phasorhand/open-customer-service-dsh/blob/main/docs/sales/faq.md">常见问题</a></h3><p>采购与技术评估：定价逻辑、与 SaaS 对比、规模边界。</p></div>
+      <div class="card"><h3><a href="https://github.com/phasorhand/open-customer-service-dsh/blob/main/docs/sales/demo-script.md">演示脚本</a></h3><p>15 分钟四幕演示，含话术与现场提问速查。</p></div>
+      <div class="card"><h3><a href="https://github.com/phasorhand/open-customer-service-dsh/blob/main/docs/DEPLOYMENT.md">部署清单</a></h3><p>给运维：安全模型、备份恢复、企微接入。</p></div>
+      <div class="card"><h3><a href="https://github.com/phasorhand/open-customer-service-dsh/blob/main/docs/sales/delivery-checklist.md">交付检查单</a></h3><p>四阶段交付 SOP：冒烟 → 部署 → 试运行 → 移交。</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><b>OpenCS</b> · Apache-2.0 开源 · 基于 DeepSeek Harness 内嵌构建</p>
+    <p style="margin-top:8px">
+      <a href="https://github.com/phasorhand/open-customer-service-dsh">GitHub</a> ·
+      <a href="mailto:sunxing2017@gmail.com">联系我们</a>
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
