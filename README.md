@@ -2,6 +2,11 @@
 
 自托管的 AI 客服 / 增长 Agent，**基于 [DeepSeek Harness (dsh)](https://github.com/deepseek-harness) 内嵌构建**。
 
+> 导入名单 → 自动节奏触达 → 客户一回复即停。
+> Agent 的**每个动作**都过风险分级，自由回复默认进审批队列——**批准的就是发出的**，全程审计可回放。
+> Agent 从低分对话里自提改进，但改行为准则永远要人点头。
+> 业务数据全在你自己的机器上，模型可全私有部署；不按坐席收费，默认安全——**放开自动化是你的决策，而不是我们的默认值**。
+
 这是 [`open-customer-service`](../open-customer-service)（Python / FastAPI）的完全重写版：
 Agent 运行时不再自建，转由 dsh 承担；OpenCS 只保留 dsh 不提供的 CS/CRM 业务语义。
 
