@@ -5,6 +5,7 @@ lib/
 
 # 运行期数据
 data/
+backups/
 .sessions/
 .sessions-smoke/
 *.db

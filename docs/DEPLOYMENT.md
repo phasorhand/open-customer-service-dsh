@@ -21,9 +21,9 @@
 ## 首次部署
 
 ```bash
-# 1. 准备两个仓库（dsh 以 link: 引用，见 README）
-git clone <opencs-repo> open-customer-service-dsh
-git clone <dsh-repo> deepseek-harness && (cd deepseek-harness && git checkout 47f943859b && pnpm install && pnpm build)
+# 1. 准备两个仓库（dsh 以 link: 引用锁定 commit，见 README「依赖 dsh 的方式」）
+git clone https://github.com/phasorhand/open-customer-service-dsh.git
+bash open-customer-service-dsh/scripts/setup-dsh.sh   # clone + checkout + 构建 ../deepseek-harness
 
 # 2. 生成凭证
 export OPENCS_ADMIN_TOKEN=$(openssl rand -hex 24)
@@ -61,6 +61,19 @@ open http://localhost:8080/console   # 右上角填 OPENCS_ADMIN_TOKEN
 
 备份即拷文件（SQLite WAL 模式下先 `sqlite3 x.db ".backup backup.db"` 或停写拷贝）。
 `knowledge/` 与 `skills/` 是运营维护的 Markdown 源，建议纳入客户自己的 git。
+
+### 自动备份
+
+`scripts/backup.sh` 对全部 `.db` 做 `.backup` 一致性快照并连同 `sessions/`
+打包 tar.gz，按份数轮转（默认 14 份）。在**宿主机**对数据卷执行，cron 示例：
+
+```cron
+# 每天 03:00 备份，保留 30 份
+0 3 * * * OPENCS_DATA_DIR=/srv/opencs/data OPENCS_BACKUP_DIR=/srv/opencs/backups \
+  OPENCS_BACKUP_KEEP=30 bash /srv/opencs/open-customer-service-dsh/scripts/backup.sh
+```
+
+恢复：停服务 → 解包 tar.gz 覆盖 `OPENCS_DATA_DIR` → 起服务。
 
 ## 已知边界
 

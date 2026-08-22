@@ -60,8 +60,14 @@ dsh 仓库：  ../deepseek-harness
 ### 准备 dsh
 
 ```bash
+bash scripts/setup-dsh.sh   # clone 公开仓库到 ../deepseek-harness、checkout 锁定 commit、构建
+```
+
+等价手动步骤：
+
+```bash
 # 与本仓库同级
-git clone <dsh-repo> ../deepseek-harness
+git clone https://github.com/deepseek-ai/deepseek-harness.git ../deepseek-harness
 cd ../deepseek-harness && git checkout 47f943859b && pnpm install && pnpm build
 ```
 
@@ -82,6 +88,10 @@ guard、工具执行与 session 持久化，只是 token 由规则生成。CI �
 
 打开 **http://localhost:8080/console** 即是管理控制台（总览 / 联系人导入 /
 节奏 / 审批队列 / 演进提案 / 审计 / 对话测试），单文件零构建，随服务分发。
+
+| 审批队列：批准的就是发出的 | 联系人：不可触达显式标注 |
+|---|---|
+| ![审批](docs/assets/console-approvals.png) | ![联系人](docs/assets/console-contacts.png) |
 
 ### 试一下：客服问答
 
@@ -282,7 +292,23 @@ pnpm smoke       # 离线全链路冒烟
 
 ```bash
 tsx scripts/dev/ws-probe.ts   # 连 WS 发消息，打印帧序列并验证重连历史一致
+bash scripts/setup-dsh.sh     # 一键准备 dsh 依赖（clone + checkout 锁定 commit + 构建）
+bash scripts/backup.sh        # 数据一致性备份（SQLite .backup + sessions 打包轮转）
 ```
+
+---
+
+## 销售与交付材料
+
+| 文档 | 给谁看 |
+|---|---|
+| [产品一页纸](docs/sales/one-pager.md) | 客户决策人（对外宣传） |
+| [演示脚本](docs/sales/demo-script.md) | 售前（15 分钟演示，含话术与 Q&A 速查） |
+| [安全与数据主权说明](docs/sales/security-whitepaper.md) | 客户安全团队 |
+| [常见问题](docs/sales/faq.md) | 采购 / 技术评估 |
+| [定价与交付模式](docs/sales/pricing.md) | 商务（含销售红线） |
+| [交付检查单](docs/sales/delivery-checklist.md) | 交付工程师（含真实 LLM 冒烟清单） |
+| [部署清单](docs/DEPLOYMENT.md) | 客户运维 |
 
 ---
 
