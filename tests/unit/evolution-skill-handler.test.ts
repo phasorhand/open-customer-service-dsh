@@ -13,7 +13,6 @@ const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 describe('buildSkillDraft', () => {
   it('从低分命中生成技能草案', () => {
     const draft: SkillDraft = buildSkillDraft({
-      dimension: 'skill',
       title: '退款场景不要承诺全额',
       rationale: '客户问退款，agent 答「我会帮你全额退款」，违反政策',
       badcaseText: '全额退款',
@@ -29,18 +28,28 @@ describe('buildSkillDraft', () => {
 
   it('无领域词典命中时回退为合法 ASCII 名', () => {
     const draft = buildSkillDraft({
-      dimension: 'skill',
-      title: '完全不认识的场景词',
+      title: '完全陌生的中文措辞',
       rationale: '测试回退路径',
       badcaseText: '坏例',
     })
-    expect(draft.name).toMatch(/^proposal-[a-z0-9-]+$/)
+    // 标题零词典命中 → slugifyTitle 返回空串 → 回退 untitled
+    expect(draft.name).toBe('proposal-untitled')
     expect(draft.name).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  })
+
+  it('含冒号标题的草案仍可被解析（YAML 安全）', () => {
+    const draft = buildSkillDraft({
+      title: '政策: 不要承诺全额退款',
+      rationale: '客户问退款时承诺了全额',
+      badcaseText: '全额退款',
+    })
+    const front = matter(draft.content)
+    expect(front.data.description).toContain('不要承诺全额退款')
+    expect(front.data.name).toBe(draft.name)
   })
 
   it('草案是合法 SKILL.md 格式（frontmatter 含 name/description/metadata）', () => {
     const draft = buildSkillDraft({
-      dimension: 'skill',
       title: '订单查询要先调工具',
       rationale: '客户问订单状态时直接编造，必须先查 crm.get_order',
       badcaseText: '已在途中',
@@ -54,7 +63,6 @@ describe('buildSkillDraft', () => {
 
   it('草案是可被技能库加载的 SKILL.md（name 过 isSkillName、parseRoutingMeta 读对路由语义）', () => {
     const draft = buildSkillDraft({
-      dimension: 'skill',
       title: '退款场景不要承诺全额',
       rationale: '客户问退款，agent 答「我会帮你全额退款」，违反政策',
       badcaseText: '全额退款',
