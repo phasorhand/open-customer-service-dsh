@@ -77,6 +77,15 @@ export interface Harness {
    */
   agentFor(scope: TenantScope): Promise<Agent>
   /**
+   * 创建一个影子 agent：复用同一 ctx 的生产 agent loop（skill / guard / 工具全生效），
+   * 供「同输入重跑」的演进验证使用。与 {@link agentFor} 的区别：
+   * 不缓存进常驻会话表、不参与生产会话复用——每次调用都是全新 agent。
+   *
+   * @param scope - 影子会话的权限事实；仍需要绑定才能通过 scope guard。
+   * @returns 一个独立的全新 agent。
+   */
+  shadowAgent(scope: TenantScope): Promise<Agent>
+  /**
    * 投递一条用户消息并等到 agent 空闲。
    *
    * @param agent - 目标 agent。
@@ -180,6 +189,16 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
   const agents = new Map<string, Agent>()
   const unbinders: (() => void)[] = []
 
+  /** 在同一 ctx 上创建 agent。生产会话与影子会话共用这一条创建路径。 */
+  const createAgent = async (sessionId: SessionId): Promise<Agent> => {
+    const handle = await ctx.agents.create({
+      sessionId,
+      meta: { cwd: process.cwd() },
+      agentOptions: { provider, model },
+    })
+    return handle.agent
+  }
+
   return {
     ctx,
     provider,
@@ -195,13 +214,18 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
       const existing = agents.get(scope.conversationId)
       if (existing !== undefined) return existing
 
-      const handle = await ctx.agents.create({
-        sessionId,
-        meta: { cwd: process.cwd() },
-        agentOptions: { provider, model },
-      })
-      agents.set(scope.conversationId, handle.agent)
-      return handle.agent
+      const agent = await createAgent(sessionId)
+      agents.set(scope.conversationId, agent)
+      return agent
+    },
+
+    async shadowAgent(scope: TenantScope): Promise<Agent> {
+      const sessionId = SessionId(`shadow-${scope.tenantId}-${scope.conversationId}`)
+      // 影子 agent 与生产 agent 走同一条 guard 链，业务工具需要作用域才能执行，
+      // 因此同样绑定；shadow-* 会话天然独立、不参与生产复用，随 dispose() 一并解绑。
+      unbinders.push(bindScope(String(sessionId), scope))
+      // 刻意**不**缓存进 agents Map：影子会话是临时回放，不占常驻会话槽。
+      return createAgent(sessionId)
     },
 
     async runTurn(agent: Agent, text: string): Promise<void> {
