@@ -203,7 +203,7 @@ apps/admin-web (Next.js，待迁移)
              · skill 提案同时产出技能草案（技能自策展：可被 dsh 加载的 SKILL.md）
              · 结论落提案 payload（shadowVerdict + skillDraft），血缘记 shadow_verified
          → 门禁判定（改行为准则的一律 needs_human）
-         → 人工审批 → 生效（血缘记 applied；技能草案晋升 skills/ 目录后命中续记 session_hit / eval_feedback）
+         → 人工审批（生效链路已预留：草案晋升 skills/ 目录 + 血缘续记 applied / session_hit / eval_feedback，见待办）
 ```
 
 **改变 agent 行为准则的提案永远需要人工确认。** `skill` / `cadence` 维度与任何
