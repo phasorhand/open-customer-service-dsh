@@ -97,6 +97,18 @@ async function api(path, options = {}) {
   return body
 }
 const esc = (value) => String(value ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+const SHADOW_LABELS = {
+  badcase_fixed: '坏例已修复',
+  badcase_remains: '坏例仍在',
+  new_regression: '出现回归',
+  inconclusive: '无结论',
+}
+// 影子验证徽标：审批者先看「重跑是否真的修了坏例」再决定批准。title 保留原始 verdict 便于对账。
+function shadowBadge(v) {
+  if (!v) return '<span class="tag">影子验证: 未验证</span>'
+  const cls = v === 'badcase_fixed' ? 'ok' : v === 'inconclusive' ? '' : 'bad'
+  return '<span class="tag ' + cls + '" title="' + esc(v) + '">影子验证: ' + esc(SHADOW_LABELS[v] || v) + '</span>'
+}
 
 const TABS = [
   ['overview', '总览'], ['contacts', '联系人'], ['cadences', '节奏'],
@@ -181,13 +193,14 @@ const RENDER = {
     const rows = data.items.map((p) =>
       '<tr><td><span class="tag">' + esc(p.dimension) + '</span></td><td><b>' + esc(p.title) + '</b><br><span class="muted">' + esc(p.rationale) + '</span></td>' +
       '<td><span class="tag ' + (p.status === 'gated' ? 'warn' : '') + '">' + esc(p.status) + '</span><br><span class="muted">' + esc(p.gateReason || '') + '</span></td>' +
+      '<td>' + shadowBadge(p.shadowVerdict) + '</td>' +
       '<td style="white-space:nowrap">' + (p.status === 'gated' || p.status === 'pending'
         ? '<button class="act primary" onclick="reviewProposal(\\'' + p.id + '\\', \\'approve\\')">批准</button> <button class="act danger" onclick="reviewProposal(\\'' + p.id + '\\', \\'reject\\')">驳回</button>'
         : '') + '</td></tr>').join('')
     $('view').innerHTML =
       '<div class="card"><h3>演进提案</h3><p class="muted" style="margin:6px 0">agent 自己提出的改进（知识缺口、话术调整）。改变行为准则的提案永远需要人工确认。各状态：' + JSON.stringify(data.counts) + '</p>' +
-      '<table><tr><th>维度</th><th>提案</th><th>状态 / 门禁判定</th><th></th></tr>' +
-      (rows || '<tr><td colspan="4" class="muted">暂无提案</td></tr>') + '</table></div>'
+      '<table><tr><th>维度</th><th>提案</th><th>状态 / 门禁判定</th><th>影子验证</th><th></th></tr>' +
+      (rows || '<tr><td colspan="5" class="muted">暂无提案</td></tr>') + '</table></div>'
   },
 
   async audit() {

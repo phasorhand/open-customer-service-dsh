@@ -115,6 +115,9 @@ export function apply(ctx: Context, deps: EvolutionToolDeps): void {
           try {
             const shadow = await curate(proposal, deps.curator)
             shadowVerdict = shadow.shadowVerdict
+            // 持久化影子证据到提案 payload，管理端列表/详情直接展示「重跑是否真的修了坏例」。
+            // 与 curate 同 try：写入失败也降级，绝不阻断 propose（证据是尽力而为的）。
+            deps.proposals.setShadowVerdict(proposal.id, shadow.shadowVerdict, shadow.divergences)
           } catch (error) {
             ctx.logger.warn(
               `[evolution] 影子验证失败，提案 ${proposal.id} 已入队，验证降级为 inconclusive：${

@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto'
 
 import { fromJsonColumn, toJsonColumn } from '../db/json.js'
 import type { Db, Migration } from '../db/sqlite.js'
+import type { DiffVerdict, Divergence } from './differ.js'
 
 export const EVOLUTION_MIGRATIONS: readonly Migration[] = [
   {
@@ -171,6 +172,34 @@ export class ProposalStore {
     this.db
       .prepare(`UPDATE proposals SET status = 'applied', updated_at = ? WHERE id = ?`)
       .run(new Date().toISOString(), id)
+    return this.require(id)
+  }
+
+  /**
+   * 记录影子验证结论（curate 的产出，propose 时尽力而为地写入）。
+   *
+   * 存在 payload 里而不是单开一列：管理端只是**展示**这个证据，从不按它查询，
+   * 不值得为一个展示字段加迁移；payload 本就是提案附加元数据的桶（如 suggestion）。
+   * 只覆盖 `shadowVerdict`/`shadowDivergences` 两个键，其余 payload 保留。
+   *
+   * @param id - 提案 id。
+   * @param verdict - 差分判定：坏例是否被影子重跑修复。
+   * @param divergences - baseline vs replay 的差异记录（可省略，落空数组）。
+   * @returns 更新后的提案。
+   */
+  setShadowVerdict(id: string, verdict: DiffVerdict, divergences?: readonly Divergence[]): Proposal {
+    const proposal = this.require(id)
+    this.db
+      .prepare('UPDATE proposals SET payload = ?, updated_at = ? WHERE id = ?')
+      .run(
+        toJsonColumn({
+          ...proposal.payload,
+          shadowVerdict: verdict,
+          shadowDivergences: divergences ?? [],
+        }),
+        new Date().toISOString(),
+        id,
+      )
     return this.require(id)
   }
 

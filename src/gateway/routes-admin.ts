@@ -187,7 +187,12 @@ export function registerEvolutionRoutes(app: FastifyInstance, runtime: OpenCsRun
           ...(query.status === undefined ? {} : { status: query.status }),
           ...(query.dimension === undefined ? {} : { dimension: query.dimension }),
           limit: query.limit ?? 50,
-        }),
+        }).map((proposal) => ({
+          ...proposal,
+          // 影子验证证据（curate 写入 payload）提到顶层：审批者不必钻进 payload 才能看到
+          // 「重跑是否真的修了坏例」。未验证时为 null（前端渲染「未验证」）。
+          shadowVerdict: (proposal.payload.shadowVerdict as string | undefined) ?? null,
+        })),
       }
     },
   )
@@ -201,6 +206,8 @@ export function registerEvolutionRoutes(app: FastifyInstance, runtime: OpenCsRun
     }
     return {
       proposal,
+      // 影子验证证据提到顶层，与列表项一致
+      shadowVerdict: (proposal.payload.shadowVerdict as string | undefined) ?? null,
       // 门禁结论的依据：来源会话的评测记录
       source_evaluations:
         proposal.sourceConversationId === undefined
