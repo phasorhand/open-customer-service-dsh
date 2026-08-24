@@ -109,7 +109,7 @@ export function apply(ctx: Context, deps: EvolutionToolDeps): void {
 
         // 闭环编排：新提案跑一次影子验证（证据 → 同输入重跑 → 差分），给人工审批看
         // 「重跑是否真的修了坏例」。这是尽力而为：提案已入队成功，curate 失败
-        // （harness 忙碌 / 未注入 curator）只降级为 inconclusive，绝不阻断 propose。
+        // （影子运行异常 / 缺少坏例文本）只降级为 inconclusive，绝不阻断 propose。
         let shadowVerdict: DiffVerdict = 'inconclusive'
         if (created && deps.curator !== undefined) {
           try {

@@ -181,9 +181,10 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
   const riskDecisions: RiskDecisionEntry[] = []
 
   // 闭环编排的 curator 需要 harness.shadowAgent（影子重跑），但 harness 是用 evolution
-  // 依赖装配出来的——装配期存在循环依赖。因此这里用一个先声明的 harnessRef 延后解析：
-  // curator 的闭包只在 propose 工具执行时（对话期，harness 早已就绪）才会真正调用。
-  let harnessRef!: Harness
+  // 依赖装配出来的——装配期存在循环依赖。因此这里在选项里内联一个**前向引用 harness 自身**
+  // 的闭包：`harness` 是下面 await 的 const，闭包体只在 propose 工具执行时（对话期，
+  // harness 早已就绪）才被调用，此刻读 harness 必已赋值——TS 允许闭包捕获后声明的块级
+  // const，无需延迟声明的可变量，也就没有「used before assigned」断言。
   const harness = await assembleHarness({
     config,
     ports,
@@ -192,7 +193,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
       proposals,
       gate,
       curator: {
-        runShadowTurn: (input, options) => runShadowTurn(harnessRef, input, options),
+        runShadowTurn: (input, options) => runShadowTurn(harness, input, options),
         evals,
       },
     },
@@ -230,8 +231,6 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
       return item.id
     },
   })
-  // harness 此刻已创建，把引用填给上面的延后闭包（见 harnessRef 声明处的注释）
-  harnessRef = harness
 
   // 组稿走单轮补全而非 agent loop（见 nurture/dsh-llm.ts 注释）。
   // 无 API key 时用离线确定性文案，让节奏在 CI 与冒烟里也能跑通。

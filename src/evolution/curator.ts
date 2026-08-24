@@ -14,7 +14,7 @@
 
 import type { EvalStore } from '../evaluation/store.js'
 import { extractEvidence, type EvidenceHit } from './evidence.js'
-import { diffFrames, type DiffVerdict, type Divergence, type FrameLike } from './differ.js'
+import type { DiffVerdict, Divergence, FrameLike } from './differ.js'
 import type { Proposal } from './store.js'
 import type { ShadowResult, ShadowTurnInput } from './shadow.js'
 
@@ -25,7 +25,7 @@ export interface CuratorDeps {
    */
   readonly runShadowTurn: (
     input: ShadowTurnInput,
-    options?: { readonly badcaseText?: string },
+    options?: { readonly badcaseText?: string; readonly baselineFrames?: readonly FrameLike[] },
   ) => Promise<ShadowResult>
   /** 评测库：取来源会话的低分评测原文（input/output 就是坏例）。 */
   readonly evals: EvalStore
@@ -67,16 +67,21 @@ export async function curate(proposal: Proposal, deps: CuratorDeps): Promise<Cur
   const badcaseText = evidenceHits[0]?.badcaseText
 
   // 3. 影子运行：同输入重跑（用原会话真实租户，见 shadow.ts Important #1 ——
-  //    缺了它 knowledge.search 对真实知识库永远 0 命中，会产生假的 badcase_fixed）
-  const shadow = await runShadowTurn({ text: bad.inputText, tenantId: proposal.tenantId })
-
-  // 4. 差分：baseline（坏例原文，单帧即可——differ 内部按文本比较）vs replay（影子输出）
-  const baselineFrames: FrameLike[] = [{ type: 'text/delta', text: bad.outputText }]
-  const diff = diffFrames(baselineFrames, shadow.replayFrames, { badcaseText })
+  //    缺了它 knowledge.search 对真实知识库永远 0 命中，会产生假的 badcase_fixed）。
+  //    baseline（坏例原文，单帧即可——differ 内部按文本比较）与 badcase 锚点一并交给
+  //    shadow 内部做差分，curate 不再重复 diff：verdict/divergences 直接透传。
+  const shadow = await runShadowTurn(
+    { text: bad.inputText, tenantId: proposal.tenantId },
+    {
+      // exactOptionalPropertyTypes 下不能显式传 undefined，未命中锚点时整项省略
+      ...(badcaseText === undefined ? {} : { badcaseText }),
+      baselineFrames: [{ type: 'text/delta', text: bad.outputText }],
+    },
+  )
 
   return {
-    shadowVerdict: diff.verdict,
-    divergences: diff.divergences,
+    shadowVerdict: shadow.verdict,
+    divergences: shadow.divergences,
     evidenceHits,
     replayFrames: shadow.replayFrames,
   }
