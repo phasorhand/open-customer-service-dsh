@@ -35,9 +35,9 @@ describe('diffFrames', () => {
     expect(result.verdict).toBe('inconclusive') // 无差异且无 badcase
   })
 
-  it('baseline 存在但 replay 只回显问候 → 判定为行为劣化或 inconclusive', () => {
-    const result = diffFrames(frames(['这是政策正文', '还需要别的吗']), frames(['你好，请描述问题']))
-    expect(['new_regression', 'inconclusive']).toContain(result.verdict)
+  it('replay 退化为极短问候 → new_regression', () => {
+    const result = diffFrames(frames(['这是政策正文', '还需要别的吗']), frames(['你好']))
+    expect(result.verdict).toBe('new_regression')
   })
 
   it('diff 记录有差异内容变更', () => {
