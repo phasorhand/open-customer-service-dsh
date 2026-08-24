@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractEvidence, type EvidenceHit } from '../../src/evolution/evidence.js'
+import { extractEvidence } from '../../src/evolution/evidence.js'
 
 describe('extractEvidence', () => {
   it('提取越权承诺类命中', () => {
@@ -25,5 +25,13 @@ describe('extractEvidence', () => {
     const hits = extractEvidence('退款', '保证全额退款到账')
     const commitment = hits.find((h) => h.kind === 'commitment_violation')
     expect(commitment?.badcaseText).toBeTruthy()
+  })
+
+  it('badcaseText 是回复的真实子串（可锚定 diff）', () => {
+    const hits = extractEvidence('退款', '保证3天退款到账')
+    const commitment = hits.find((h) => h.kind === 'commitment_violation')
+    expect(commitment?.badcaseText).toBeTruthy()
+    // 真实子串：能被 includes 找到
+    expect('保证3天退款到账'.includes(commitment?.badcaseText ?? '')).toBe(true)
   })
 })

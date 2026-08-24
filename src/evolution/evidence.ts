@@ -21,27 +21,44 @@ const GAP_MARKERS = [/没有查到|知识库中没有|暂时没有找到|无法�
 
 const FLUFF_MARKERS = [/请放心/, /您放心/, /放心好了/, /一定会为您/, /尽力帮您/]
 
+/**
+ * 返回标记数组中第一个在 output 里实际命中的正则：
+ * source 是正则模式原文，matched 是 output 中被匹配到的真实子串。
+ * 复合正则（如 `保证.{0,4}(?:退|赔|到账|修复)`）的 source 不是回复的子串，
+ * 只有 matched 才能作为差分器的 badcase 锚点。
+ */
+function firstMatch(
+  markers: readonly RegExp[],
+  output: string,
+): { source: string; matched: string } | undefined {
+  for (const re of markers) {
+    const m = re.exec(output)
+    if (m !== null) return { source: re.source, matched: m[0] }
+  }
+  return undefined
+}
+
 export function extractEvidence(input: string, output: string): EvidenceHit[] {
   const hits: EvidenceHit[] = []
-  const commit = COMMITMENT_MARKERS.find((re) => re.test(output))
+  const commit = firstMatch(COMMITMENT_MARKERS, output)
   if (commit !== undefined) {
     hits.push({
       kind: 'commitment_violation',
-      badcaseText: commit.source,
-      detail: `回复包含越权承诺措辞：${commit.source}`,
+      badcaseText: commit.matched,
+      detail: `回复包含越权承诺措辞：${commit.matched}`,
     })
   }
-  const gap = GAP_MARKERS.find((re) => re.test(output))
+  const gap = firstMatch(GAP_MARKERS, output)
   if (gap !== undefined) {
     hits.push({
       kind: 'factual_gap',
-      badcaseText: gap.source,
+      badcaseText: gap.matched,
       detail: `对「${input.slice(0, 30)}」未能给出知识库依据的回答`,
     })
   }
-  const fluff = FLUFF_MARKERS.find((re) => re.test(output))
+  const fluff = firstMatch(FLUFF_MARKERS, output)
   if (fluff !== undefined) {
-    hits.push({ kind: 'tone_issue', badcaseText: fluff.source, detail: `回复含空泛安抚语：${fluff.source}` })
+    hits.push({ kind: 'tone_issue', badcaseText: fluff.matched, detail: `回复含空泛安抚语：${fluff.matched}` })
   }
   return hits
 }
