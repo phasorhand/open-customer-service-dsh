@@ -50,6 +50,23 @@ export const EVOLUTION_MIGRATIONS: readonly Migration[] = [
         WHERE status IN ('pending', 'gated', 'approved');
     `,
   },
+  {
+    id: 2,
+    name: 'create_lineage',
+    sql: `
+      -- 血缘事件表（spec §3.6）：按时间线性追加，够「看来源 + 看效果」，不建独立 DAG
+      CREATE TABLE lineage (
+        id          TEXT PRIMARY KEY,
+        proposal_id TEXT NOT NULL,
+        kind        TEXT NOT NULL,
+        detail      TEXT,
+        created_at  TEXT NOT NULL
+      );
+      CREATE INDEX idx_lineage_proposal ON lineage (proposal_id, created_at);
+      -- detail 在相关事件里携带技能 id（如 skill=proposal-tuikuan），供反查
+      CREATE INDEX idx_lineage_skill ON lineage (kind, detail);
+    `,
+  },
 ]
 
 /** 可演进的维度。 */
