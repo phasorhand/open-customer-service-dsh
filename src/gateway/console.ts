@@ -110,6 +110,17 @@ function shadowBadge(v) {
   return '<span class="tag ' + cls + '" title="' + esc(v) + '">影子验证: ' + esc(SHADOW_LABELS[v] || v) + '</span>'
 }
 
+// 技能自策展草案：skill 提案的 curate 会产出一份可被 dsh 加载的 SKILL.md 草案，
+// 存 payload.skillDraftName/Content。展示名字 + details 折叠全文（白底 pre 对齐卡片）。
+// 无草案时返回空串，不影响其他列布局。
+function skillDraftHtml(p) {
+  const name = p.payload && p.payload.skillDraftName
+  if (!name) return ''
+  return '<details style="margin-top:6px"><summary class="muted">技能草案: ' + esc(name) + '</summary>' +
+    '<pre style="margin-top:6px;padding:8px;background:#fff;border:1px solid var(--line);border-radius:6px;white-space:pre-wrap;word-break:break-all;font-size:12px">' +
+    esc(p.payload.skillDraftContent || '') + '</pre></details>'
+}
+
 const TABS = [
   ['overview', '总览'], ['contacts', '联系人'], ['cadences', '节奏'],
   ['approvals', '审批'], ['proposals', '演进提案'], ['audit', '审计'], ['chat', '对话测试'],
@@ -191,7 +202,7 @@ const RENDER = {
   async proposals() {
     const data = await api('/admin/proposals')
     const rows = data.items.map((p) =>
-      '<tr><td><span class="tag">' + esc(p.dimension) + '</span></td><td><b>' + esc(p.title) + '</b><br><span class="muted">' + esc(p.rationale) + '</span></td>' +
+      '<tr><td><span class="tag">' + esc(p.dimension) + '</span></td><td><b>' + esc(p.title) + '</b><br><span class="muted">' + esc(p.rationale) + '</span>' + skillDraftHtml(p) + '</td>' +
       '<td><span class="tag ' + (p.status === 'gated' ? 'warn' : '') + '">' + esc(p.status) + '</span><br><span class="muted">' + esc(p.gateReason || '') + '</span></td>' +
       '<td>' + shadowBadge(p.shadowVerdict) + '</td>' +
       '<td style="white-space:nowrap">' + (p.status === 'gated' || p.status === 'pending'

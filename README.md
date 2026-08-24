@@ -198,10 +198,12 @@ apps/admin-web (Next.js，待迁移)
 ```
 每轮回复 → 确定性评测（越权承诺/语气/推进度，零成本、不调模型）
          → 低分会话沉淀为证据
-         → agent 调 evolution.propose 提改进
+         → agent 调 evolution.propose 提改进（血缘记 proposed：来源会话）
          → 影子运行验证（同输入重跑，看是否真的修了坏例）
+             · skill 提案同时产出技能草案（技能自策展：可被 dsh 加载的 SKILL.md）
+             · 结论落提案 payload（shadowVerdict + skillDraft），血缘记 shadow_verified
          → 门禁判定（改行为准则的一律 needs_human）
-         → 人工审批 → 生效 → 血缘追踪记录
+         → 人工审批 → 生效（血缘记 applied；技能草案晋升 skills/ 目录后命中续记 session_hit / eval_feedback）
 ```
 
 **改变 agent 行为准则的提案永远需要人工确认。** `skill` / `cadence` 维度与任何

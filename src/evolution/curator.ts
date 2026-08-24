@@ -14,6 +14,7 @@
 
 import type { EvalStore } from '../evaluation/store.js'
 import { extractEvidence, type EvidenceHit } from './evidence.js'
+import { buildSkillDraft, type SkillDraft } from './handlers/skill.js'
 import type { DiffVerdict, Divergence, FrameLike } from './differ.js'
 import type { Proposal } from './store.js'
 import type { ShadowResult, ShadowTurnInput } from './shadow.js'
@@ -40,6 +41,11 @@ export interface CurateResult {
   readonly evidenceHits: readonly EvidenceHit[]
   /** 影子重跑的 replay 帧，供审批界面展示「重跑后长什么样」。 */
   readonly replayFrames: readonly FrameLike[]
+  /**
+   * 技能自策展草案：`dimension === 'skill'` 的提案 → 一份可被 dsh 加载的
+   * SKILL.md 草案（name 为 ASCII kebab-case `proposal-...`）。非 skill 提案缺省。
+   */
+  readonly skillDraft?: SkillDraft
 }
 
 /**
@@ -59,7 +65,17 @@ export async function curate(proposal: Proposal, deps: CuratorDeps): Promise<Cur
   const results = proposal.sourceConversationId === undefined ? [] : evals.byConversation(proposal.sourceConversationId)
   const bad = results.find((r) => !r.passed)
   if (bad === undefined || bad.inputText === undefined || bad.outputText === undefined) {
-    return { shadowVerdict: 'inconclusive', divergences: [], evidenceHits: [], replayFrames: [] }
+    return {
+      shadowVerdict: 'inconclusive',
+      divergences: [],
+      evidenceHits: [],
+      replayFrames: [],
+      // 技能自策展：skill 提案无论影子验证结论如何都产出一份草案（供审批预览 + apply-flow 晋升）。
+      // 无坏例文本时 badcase 锚点留空，草案仍由 title/rationale 支撑。
+      ...(proposal.dimension === 'skill'
+        ? { skillDraft: buildSkillDraft({ title: proposal.title, rationale: proposal.rationale, badcaseText: '' }) }
+        : {}),
+    }
   }
 
   // 2. 证据画像 + 差分坏例锚点（取第一条命中的 badcaseText；可能为空数组）
@@ -84,5 +100,9 @@ export async function curate(proposal: Proposal, deps: CuratorDeps): Promise<Cur
     divergences: shadow.divergences,
     evidenceHits,
     replayFrames: shadow.replayFrames,
+    // 技能自策展：skill 提案从低分会话证据生成 SKILL.md 草案（坏例锚点进「坏例」行）。
+    ...(proposal.dimension === 'skill'
+      ? { skillDraft: buildSkillDraft({ title: proposal.title, rationale: proposal.rationale, badcaseText: badcaseText ?? '' }) }
+      : {}),
   }
 }

@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto'
 import { fromJsonColumn, toJsonColumn } from '../db/json.js'
 import type { Db, Migration } from '../db/sqlite.js'
 import type { DiffVerdict, Divergence } from './differ.js'
+import type { SkillDraft } from './handlers/skill.js'
 
 export const EVOLUTION_MIGRATIONS: readonly Migration[] = [
   {
@@ -212,6 +213,33 @@ export class ProposalStore {
           ...proposal.payload,
           shadowVerdict: verdict,
           shadowDivergences: divergences ?? [],
+        }),
+        new Date().toISOString(),
+        id,
+      )
+    return this.require(id)
+  }
+
+  /**
+   * 记录技能自策展草案（curate 对 skill 维度提案产出的 SKILL.md 草案）。
+   *
+   * 与 setShadowVerdict 同风格：存 payload 而不是单开一列——管理端只是**展示**
+   * 这份草案，后续 apply-flow 晋升时再真正写 skills/ 目录。只覆盖
+   * `skillDraftName`/`skillDraftContent` 两个键，其余 payload 保留。
+   *
+   * @param id - 提案 id。
+   * @param draft - buildSkillDraft 的产出（dsh 可加载的 SKILL.md 草案）。
+   * @returns 更新后的提案。
+   */
+  setSkillDraft(id: string, draft: SkillDraft): Proposal {
+    const proposal = this.require(id)
+    this.db
+      .prepare('UPDATE proposals SET payload = ?, updated_at = ? WHERE id = ?')
+      .run(
+        toJsonColumn({
+          ...proposal.payload,
+          skillDraftName: draft.name,
+          skillDraftContent: draft.content,
         }),
         new Date().toISOString(),
         id,

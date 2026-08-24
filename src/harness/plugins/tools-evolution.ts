@@ -11,6 +11,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { curate, type CuratorDeps } from '../../evolution/curator.js'
 import type { DiffVerdict } from '../../evolution/differ.js'
 import type { EvolutionGate } from '../../evolution/gate.js'
+import type { LineageStore } from '../../evolution/lineage.js'
 import type { ProposalDimension, ProposalStore } from '../../evolution/store.js'
 import { cardToJson, makeCard } from '../cards.js'
 import { requireScope, sessionIdOf } from '../session-scope.js'
@@ -30,6 +31,13 @@ export interface EvolutionToolDeps {
    * 提案已入队成功，影子验证是尽力而为的证据——任何装配下都不允许它阻断 propose。
    */
   readonly curator?: CuratorDeps
+  /**
+   * 血缘追踪：提案 → 来源/效果的线性事件时间线（spec §3.6）。
+   *
+   * 可选：未注入时 propose 只跳过血缘记录，不改变任何既有行为。
+   * 血缘与影子验证一样是尽力而为的旁路，绝不阻断 propose。
+   */
+  readonly lineage?: LineageStore
 }
 
 export function apply(ctx: Context, deps: EvolutionToolDeps): void {
@@ -107,6 +115,10 @@ export function apply(ctx: Context, deps: EvolutionToolDeps): void {
         // 新提案立即过一次门禁，让管理端看到的就是最终待办状态
         const gated = created ? deps.gate.evaluate(proposal.id) : { verdict: proposal.gateVerdict ?? 'needs_human', reason: proposal.gateReason ?? '已有同类提案' }
 
+        // 血缘追踪：新提案落地即记 `proposed`，detail 记来源会话（权限事实，服务端注入）。
+        // 与其余旁路一样尽力而为——血缘记录失败绝不阻断 propose。
+        if (created) deps.lineage?.append(proposal.id, 'proposed', scope.conversationId)
+
         // 闭环编排：新提案跑一次影子验证（证据 → 同输入重跑 → 差分），给人工审批看
         // 「重跑是否真的修了坏例」。这是尽力而为：提案已入队成功，curate 失败
         // （影子运行异常 / 缺少坏例文本）只降级为 inconclusive，绝不阻断 propose。
@@ -118,6 +130,11 @@ export function apply(ctx: Context, deps: EvolutionToolDeps): void {
             // 持久化影子证据到提案 payload，管理端列表/详情直接展示「重跑是否真的修了坏例」。
             // 与 curate 同 try：写入失败也降级，绝不阻断 propose（证据是尽力而为的）。
             deps.proposals.setShadowVerdict(proposal.id, shadow.shadowVerdict, shadow.divergences)
+            // 技能自策展：skill 提案的影子验证同时产出一份 SKILL.md 草案，持久化到 payload，
+            // 管理端「演进提案」页签即可预览、后续 apply-flow 可据此晋升。
+            if (shadow.skillDraft !== undefined) deps.proposals.setSkillDraft(proposal.id, shadow.skillDraft)
+            // 血缘追踪：影子验证结论记 `shadow_verified`，detail 记 verdict 字符串。
+            deps.lineage?.append(proposal.id, 'shadow_verified', shadow.shadowVerdict)
           } catch (error) {
             ctx.logger.warn(
               `[evolution] 影子验证失败，提案 ${proposal.id} 已入队，验证降级为 inconclusive：${

@@ -21,6 +21,7 @@ import { CRM_MIGRATIONS, ContactStore } from './crm/store.js'
 import { openDb, type Db } from './db/sqlite.js'
 import { EVAL_MIGRATIONS, EvalStore } from './evaluation/store.js'
 import { EvolutionGate } from './evolution/gate.js'
+import { LineageStore } from './evolution/lineage.js'
 import { runShadowTurn } from './evolution/shadow.js'
 import { EVOLUTION_MIGRATIONS, ProposalStore } from './evolution/store.js'
 import { assembleHarness, type Harness } from './harness/assemble.js'
@@ -168,6 +169,9 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
   ])
   const evals = new EvalStore(evolutionDb)
   const proposals = new ProposalStore(evolutionDb)
+  // 血缘追踪（spec §3.6）：propose 起即记 proposed / shadow_verified，审批生效后由
+  // apply-flow 续记 applied / session_hit / eval_feedback。与提案同库，保证事务一致。
+  const lineage = new LineageStore(evolutionDb)
   // 自动放行默认关闭：生产开启前应先积累人工审批数据，确认提案质量
   const gate = new EvolutionGate(proposals, evals)
 
@@ -196,6 +200,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<OpenCs
         runShadowTurn: (input, options) => runShadowTurn(harness, input, options),
         evals,
       },
+      lineage,
     },
     onRiskDecision: (entry) => {
       riskDecisions.push(entry)

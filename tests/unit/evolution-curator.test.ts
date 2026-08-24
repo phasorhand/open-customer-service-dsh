@@ -78,6 +78,40 @@ describe('curate · 闭环编排', () => {
       { text: '买的东西想退款还来得及吗', tenantId: 'default' },
       { badcaseText: '全额退款', baselineFrames: [{ type: 'text/delta', text: '我会帮你全额退款' }] },
     )
+    // ⑤ skill 维度 → 技能自策展草案：ASCII kebab-case 名 + 坏例锚点进草案正文
+    expect(result.skillDraft).toBeDefined()
+    expect(result.skillDraft?.name).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    expect(result.skillDraft?.content).toContain('坏例：全额退款')
+  })
+
+  it('非 skill 维度不产技能草案', async () => {
+    const evals = {
+      byConversation: vi.fn(() => [
+        {
+          id: 'e1',
+          tenantId: 'default',
+          conversationId: 'conv-bad',
+          mode: 'realtime',
+          passed: false,
+          overallScore: 0.2,
+          metrics: [],
+          inputText: '买的东西想退款还来得及吗',
+          outputText: '我会帮你全额退款',
+          createdAt: new Date(),
+        },
+      ]),
+    } as unknown as EvalStore
+    const runShadowTurn = vi.fn(async () => ({
+      verdict: 'badcase_fixed' as DiffVerdict,
+      divergences: [],
+      replayFrames: [{ type: 'text/delta' as const, text: '我帮你查一下政策' }],
+    }))
+    const deps = { runShadowTurn, evals } as unknown as CuratorDeps
+
+    const result = await curate({ ...PROPOSAL, dimension: 'knowledge' }, deps)
+
+    expect(result.shadowVerdict).toBe('badcase_fixed')
+    expect(result.skillDraft).toBeUndefined()
   })
 
   it('来源会话无低分评测时返回 inconclusive', async () => {
