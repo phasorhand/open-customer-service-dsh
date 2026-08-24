@@ -8,11 +8,15 @@
 
 export type FrameLike = {
   readonly type: string
+  /** seq 对齐真实 Frame 结构，保留给后续结构差分（影子运行任务），当前实现不读取 */
   readonly seq?: number
   readonly text?: string
-  readonly index?: number
 }
 
+/**
+ * 差分种类（保留扩充面）：当前仅产出 content_changed。
+ * 其余种类与 DIFF_LIMIT 为后续结构差分预留（影子运行任务），供消费方按类型区分展示。
+ */
 export type DivergenceKind = 'content_changed' | 'action_changed' | 'tool_missing' | 'tool_added' | 'llm_output_changed'
 
 export interface Divergence {
@@ -28,6 +32,7 @@ export interface DiffResult {
   readonly divergences: readonly Divergence[]
 }
 
+/** 结构差分阶段按种类批量产出时的上限；当前 summarize 至多产出 1 条 */
 const DIFF_LIMIT = 12
 
 export function diffFrames(
@@ -50,7 +55,7 @@ export function diffFrames(
     if (inReplay) return { verdict: 'badcase_remains', divergences: summarize(baseText, replayText) }
   }
 
-  // 无 badcase 锚点：replay 相比 baseline 明显退化为「只会问候」→ 判回归
+  // badcase 锚点未命中（未提供，或提供但两边均未命中）：replay 相比 baseline 明显退化为「只会问候」→ 判回归
   if (replayText.trim().length < 6 && baseText.trim().length >= 6) {
     return { verdict: 'new_regression', divergences: summarize(baseText, replayText) }
   }
