@@ -16,7 +16,7 @@ Agent 运行时不再自建，转由 dsh 承担；OpenCS 只保留 dsh 不提供
 >
 > | 已完成 | 待办 |
 > |---|---|
-> | dsh 内嵌 agent 内核 · 渠道网关（webchat + **企微客服**）· HTTP/WS 帧协议 · FTS5 知识库与热重载 · 技能库与两轮选择 · CRM 漏斗与分群 · 节奏引擎与全自动成单 · CS 评测 · 演进门禁 · **管理面鉴权 · HITL 审批闭环 · 持久化审计 · webhook 频控 · 管理控制台 · OpenAI 兼容网关** · Docker | 技能自策展 / 消融实验 / 回放差分器 · 多实例水平扩展（BullMQ 切换点已预留） |
+> | dsh 内嵌 agent 内核 · 渠道网关（webchat + **企微客服**）· HTTP/WS 帧协议 · FTS5 知识库与热重载 · 技能库与两轮选择 · CRM 漏斗与分群 · 节奏引擎与全自动成单 · CS 评测 · 演进门禁 · **技能自策展 · 影子运行验证 · 回放差分器 · 血缘追踪** · **管理面鉴权 · HITL 审批闭环 · 持久化审计 · webhook 频控 · 管理控制台 · OpenAI 兼容网关** · Docker | 消融实验 · 多实例水平扩展（BullMQ 切换点已预留） |
 >
 > 进度见 `docs/superpowers/plans/`，客户交付文档见 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。
 
@@ -199,8 +199,9 @@ apps/admin-web (Next.js，待迁移)
 每轮回复 → 确定性评测（越权承诺/语气/推进度，零成本、不调模型）
          → 低分会话沉淀为证据
          → agent 调 evolution.propose 提改进
+         → 影子运行验证（同输入重跑，看是否真的修了坏例）
          → 门禁判定（改行为准则的一律 needs_human）
-         → 人工审批 → 生效
+         → 人工审批 → 生效 → 血缘追踪记录
 ```
 
 **改变 agent 行为准则的提案永远需要人工确认。** `skill` / `cadence` 维度与任何

@@ -139,7 +139,7 @@ const RENDER = {
       '<div class="stat card"><b>' + (stats.cadences.byState.active || 0) + '</b><span>节奏运行中</span></div>' +
       '<div class="stat card"><b>' + stats.knowledge.chunkCount + '</b><span>知识块</span></div>' +
       '</div><h3 style="margin:14px 0 8px">漏斗</h3><div class="grid">' + (funnel || '<span class="muted">暂无数据</span>') + '</div>' +
-      '<p class="muted" style="margin-top:18px;font-size:12px">每个动作过风险分级 · 自由回复默认进审批 · 批准的就是发出的 · 全程审计可回放 · 放开自动化是运营决策</p>'
+      '<p class="muted" style="margin-top:18px;font-size:12px">每个动作过风险分级 · 自由回复默认进审批 · 批准的就是发出的 · 低分对话自进化但门禁在 · 全程审计可回放 · 放开自动化是运营决策</p>'
   },
 
   async contacts() {
