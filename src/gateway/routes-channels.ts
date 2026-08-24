@@ -6,6 +6,7 @@
 
 import type { FastifyInstance } from 'fastify'
 
+import { toTextBlocks } from '../evolution/assistant-text.js'
 import { ChannelParseError } from '../channel/adapter.js'
 import { textOf } from '../channel/types.js'
 import { WEBCHAT_CHANNEL_ID } from '../channel/webchat.js'
@@ -80,13 +81,7 @@ export function registerChannelRoutes(app: FastifyInstance, runtime: OpenCsRunti
 }
 
 function assistantText(events: readonly SessionEventLike[]): string {
-  const out: string[] = []
-  for (const event of events) {
-    if (event.type !== 'assistant/message') continue
-    const data = event.data as { message?: { content?: readonly { type: string; text?: string }[] } }
-    for (const block of data.message?.content ?? []) {
-      if (block.type === 'text' && typeof block.text === 'string') out.push(block.text)
-    }
-  }
-  return out.join('\n')
+  return toTextBlocks(events)
+    .map((b) => b.text)
+    .join('\n')
 }

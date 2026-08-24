@@ -38,7 +38,7 @@ const DIFF_LIMIT = 12
 export function diffFrames(
   baseline: readonly FrameLike[],
   replay: readonly FrameLike[],
-  options: { readonly badcaseText?: string } = {},
+  options: { readonly badcaseText?: string | undefined } = {},
 ): DiffResult {
   if (baseline.length === 0 || replay.length === 0) {
     return { verdict: 'inconclusive', divergences: [] }

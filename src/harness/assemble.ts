@@ -12,7 +12,7 @@
 import { mkdirSync } from 'node:fs'
 
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { type Agent, type AgentHandle } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LlmRuntime, { createUserMessage } from '@deepseek-ai/dsh-llm'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
@@ -80,11 +80,13 @@ export interface Harness {
    * 创建一个影子 agent：复用同一 ctx 的生产 agent loop（skill / guard / 工具全生效），
    * 供「同输入重跑」的演进验证使用。与 {@link agentFor} 的区别：
    * 不缓存进常驻会话表、不参与生产会话复用——每次调用都是全新 agent。
+   * 返回的句柄带有 dispose()：dsh 的 AgentHandle 契约要求**用完必须 dispose**，
+   * 否则影子 session 会在 store 里越积越多（停循环、注销 agent、移除 session）。
    *
    * @param scope - 影子会话的权限事实；仍需要绑定才能通过 scope guard。
-   * @returns 一个独立的全新 agent。
+   * @returns 全新 agent 句柄（agent + 用后即弃的 dispose）。
    */
-  shadowAgent(scope: TenantScope): Promise<Agent>
+  shadowAgent(scope: TenantScope): Promise<ShadowAgentHandle>
   /**
    * 投递一条用户消息并等到 agent 空闲。
    *
@@ -94,6 +96,18 @@ export interface Harness {
   runTurn(agent: Agent, text: string): Promise<void>
   /** 关停：释放 agent 与作用域绑定。 */
   dispose(): Promise<void>
+}
+
+/**
+ * 影子 agent 句柄：agent + 用后即弃的 dispose。
+ *
+ * dsh 的 {@link AgentHandle} 契约：`dispose()` 停循环、注销 agent、
+ * 移除其 session、并解开 scoped world。影子会话是一次性回放，跑完必须 dispose，
+ * 否则 shadow-* 会话会在 session store 里累积。
+ */
+export interface ShadowAgentHandle {
+  readonly agent: Agent
+  readonly dispose: () => Promise<void>
 }
 
 /**
@@ -189,14 +203,19 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
   const agents = new Map<string, Agent>()
   const unbinders: (() => void)[] = []
 
-  /** 在同一 ctx 上创建 agent。生产会话与影子会话共用这一条创建路径。 */
-  const createAgent = async (sessionId: SessionId): Promise<Agent> => {
-    const handle = await ctx.agents.create({
+  /**
+   * 在同一 ctx 上创建 agent。生产会话与影子会话共用这一条创建路径。
+   *
+   * 返回 AgentHandle 而不是裸 Agent：只有持有 handle 才能 `dispose()` 停循环、
+   * 注销 agent、移除 session。生产会话缓存进 agents Map（harness.dispose 统一清理），
+   * 影子会话则由调用方用后即弃。
+   */
+  const createAgent = async (sessionId: SessionId): Promise<AgentHandle> => {
+    return ctx.agents.create({
       sessionId,
       meta: { cwd: process.cwd() },
       agentOptions: { provider, model },
     })
-    return handle.agent
   }
 
   return {
@@ -214,18 +233,21 @@ export async function assembleHarness(options: HarnessOptions): Promise<Harness>
       const existing = agents.get(scope.conversationId)
       if (existing !== undefined) return existing
 
-      const agent = await createAgent(sessionId)
-      agents.set(scope.conversationId, agent)
-      return agent
+      const handle = await createAgent(sessionId)
+      agents.set(scope.conversationId, handle.agent)
+      return handle.agent
     },
 
-    async shadowAgent(scope: TenantScope): Promise<Agent> {
+    async shadowAgent(scope: TenantScope): Promise<ShadowAgentHandle> {
       const sessionId = SessionId(`shadow-${scope.tenantId}-${scope.conversationId}`)
       // 影子 agent 与生产 agent 走同一条 guard 链，业务工具需要作用域才能执行，
       // 因此同样绑定；shadow-* 会话天然独立、不参与生产复用，随 dispose() 一并解绑。
       unbinders.push(bindScope(String(sessionId), scope))
       // 刻意**不**缓存进 agents Map：影子会话是临时回放，不占常驻会话槽。
-      return createAgent(sessionId)
+      const handle = await createAgent(sessionId)
+      // 持有 handle 以便用后即弃：dispose 停循环、注销 agent、移除其 session。
+      // 这是 dsh 的 AgentHandle 契约，否则 shadow-* 会话会在 session store 里累积。
+      return { agent: handle.agent, dispose: () => handle.dispose() }
     },
 
     async runTurn(agent: Agent, text: string): Promise<void> {

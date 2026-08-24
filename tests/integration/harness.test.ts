@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
+import { toTextBlocks } from '../../src/evolution/assistant-text.js'
 import { loadConfig } from '../../src/config.js'
 import { assembleHarness, type Harness } from '../../src/harness/assemble.js'
 import { parseCard } from '../../src/harness/cards.js'
@@ -65,17 +66,11 @@ afterEach(async () => {
   resetScopes()
 })
 
-/** 从 session 事件里抽出助手回复的纯文本。 */
+/** 从 session 事件里抽出助手回复的纯文本（与 shadow/网关共用同一投影 helper）。 */
 function assistantText(events: readonly { readonly type: string; readonly data: unknown }[]): string {
-  const out: string[] = []
-  for (const event of events) {
-    if (event.type !== 'assistant/message') continue
-    const data = event.data as { message?: { content?: readonly { type: string; text?: string }[] } }
-    for (const block of data.message?.content ?? []) {
-      if (block.type === 'text' && typeof block.text === 'string') out.push(block.text)
-    }
-  }
-  return out.join('\n')
+  return toTextBlocks(events)
+    .map((b) => b.text)
+    .join('\n')
 }
 
 function toolNames(events: readonly { readonly type: string; readonly data: unknown }[]): string[] {
