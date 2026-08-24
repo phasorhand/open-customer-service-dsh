@@ -22,6 +22,56 @@ const PROPOSAL_ROUTING = 'cs_reply'
 const NAME_MAX = 24
 
 /**
+ * 领域词 → 拼音，用于把中文标题转成 ASCII kebab-case 技能名。
+ *
+ * dsh 技能名只接受 `[a-z0-9]+(?:-[a-z0-9]+)*`（见 dsh-skill 的 isSkillName），
+ * 不符合的名字在发现期被静默丢弃——中文标题不能直接进名字，词典命中的领域词
+ * 换成拼音保留语义，未命中的中文在 slug 里一律剥离（description / intent_signals
+ * 仍可自由含中文）。
+ */
+const DOMAIN_PINYIN: Readonly<Record<string, string>> = {
+  退款: 'tuikuan',
+  退货: 'tuihuo',
+  订单: 'order',
+  查询: 'query',
+  发票: 'invoice',
+  物流: 'logistics',
+  承诺: 'commitment',
+  客户: 'customer',
+  政策: 'policy',
+  场景: 'scenario',
+  不要: 'avoid',
+  先: 'first',
+  调: 'call',
+  工具: 'tool',
+  全额: 'full',
+}
+
+/** 词典条目按词长降序，保证长词优先命中（如「订单」先于可能出现的「单」）。 */
+const PINYIN_ENTRIES: readonly (readonly [string, string])[] = Object.entries(DOMAIN_PINYIN).sort(
+  (a, b) => b[0].length - a[0].length,
+)
+
+/**
+ * 中文标题 → ASCII kebab-case slug。
+ *
+ * 词典命中的中文词替换为带分隔符的拼音，残留的非 ASCII（未命中词典的中文）
+ * 与标点空格统一折叠成 `-`，再截断到 NAME_MAX。无任何可保留字符时返回空串，
+ * 由调用方回退为 `untitled`。
+ */
+function slugifyTitle(title: string): string {
+  let out = title.toLowerCase()
+  for (const [word, pinyin] of PINYIN_ENTRIES) {
+    out = out.split(word).join(`-${pinyin}-`)
+  }
+  return out
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, NAME_MAX)
+    .replace(/-+$/g, '')
+}
+
+/**
  * 从标题提取意图信号。
  *
  * 标题常形如「退款场景不要承诺全额」→ 在第一个动作/结论词处截断，
@@ -43,12 +93,7 @@ export function buildSkillDraft(input: {
 }): SkillDraft {
   const { title, rationale, badcaseText } = input
   const trimmedTitle = title.trim()
-  const slug = trimmedTitle
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, NAME_MAX)
-  const name = `proposal-${slug || 'untitled'}`
+  const name = `proposal-${slugifyTitle(trimmedTitle) || 'untitled'}`
   const signals = deriveIntentSignals(trimmedTitle)
 
   const content = [
