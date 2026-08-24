@@ -63,8 +63,7 @@ export const EVOLUTION_MIGRATIONS: readonly Migration[] = [
         created_at  TEXT NOT NULL
       );
       CREATE INDEX idx_lineage_proposal ON lineage (proposal_id, created_at);
-      -- detail 在相关事件里携带技能 id（如 skill=proposal-tuikuan），供反查
-      CREATE INDEX idx_lineage_skill ON lineage (kind, detail);
+      -- 反查技能走 detail LIKE '%skill=<id>%'，前导通配符无法走索引，低流量表全扫即可，故不建额外索引
     `,
   },
 ]

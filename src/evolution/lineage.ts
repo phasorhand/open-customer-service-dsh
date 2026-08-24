@@ -46,19 +46,21 @@ export class LineageStore {
     return { id, proposalId, kind, ...(detail === undefined ? {} : { detail }), createdAt: new Date(now) }
   }
 
-  /** 给定提案 id → 事件时间线（按时间升序）。 */
+  /** 给定提案 id → 事件时间线（按时间升序，同毫秒按 rowid 保持追加顺序）。 */
   forProposal(proposalId: string): readonly LineageEvent[] {
     const rows = this.db
-      .prepare('SELECT * FROM lineage WHERE proposal_id = ? ORDER BY created_at ASC')
+      .prepare('SELECT * FROM lineage WHERE proposal_id = ? ORDER BY created_at ASC, rowid')
       .all(proposalId) as unknown as Row[]
     return rows.map(hydrate)
   }
 
   /** 给定技能 id → 反查所有相关事件（detail 携带 `skill=<skillId>` 的来源与命中）。 */
   forSkill(skillId: string): readonly LineageEvent[] {
+    // skillId 是用户可传入的公开 API 参数：转义 LIKE 通配符（\、%、_），防止 `a_b` 误匹配 `aXb`
+    const escaped = skillId.replace(/[\\%_]/g, (c) => `\\${c}`)
     const rows = this.db
-      .prepare("SELECT * FROM lineage WHERE detail LIKE '%' || ? || '%' ORDER BY created_at ASC")
-      .all(skillId) as unknown as Row[]
+      .prepare("SELECT * FROM lineage WHERE detail LIKE '%' || ? || '%' ESCAPE '\\' ORDER BY created_at ASC, rowid")
+      .all(escaped) as unknown as Row[]
     return rows.map(hydrate)
   }
 }

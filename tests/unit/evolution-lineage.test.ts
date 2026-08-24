@@ -36,10 +36,24 @@ describe('LineageStore', () => {
     const store = lineage()
     store.append('p1', 'applied', 'skill=proposal-tuikuan')
     store.append('p1', 'session_hit', 'skill=proposal-tuikuan conv=c2')
+    store.append('p2', 'applied', 'skill=unrelated-skill')
     const events = store.forSkill('proposal-tuikuan')
     expect(events.length).toBeGreaterThanOrEqual(2)
     expect(events.some((e) => e.kind === 'applied')).toBe(true)
     expect(events.some((e) => e.kind === 'session_hit')).toBe(true)
+    expect(events.some((e) => e.detail?.includes('skill=unrelated-skill'))).toBe(false)
+  })
+
+  it('forSkill 无事件时返回空数组', () => {
+    const store = lineage()
+    expect(store.forSkill('none')).toEqual([])
+  })
+
+  it('forSkill 技能 id 含下划线不误匹配（LIKE 通配符转义）', () => {
+    const store = lineage()
+    store.append('p1', 'applied', 'skill=aXb')
+    const events = store.forSkill('a_b')
+    expect(events).toEqual([])
   })
 
   it('proposal 无事件时返回空数组', () => {
